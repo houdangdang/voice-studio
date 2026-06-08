@@ -6,8 +6,11 @@
 <title>VoiceForge</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
-<!-- msgpack for Fish Audio API serialization -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/msgpack-lite/0.1.26/msgpack.min.js"></script>
+<!-- 与 fish-audio 官方 SDK 相同：@msgpack/msgpack 才能把 Uint8Array 编成二进制 -->
+<script type="module">
+import { encode } from 'https://esm.sh/@msgpack/msgpack@3.1.2';
+window.fishMsgpackEncode = encode;
+</script>
 <style>
 :root{
   --ink:#0f0e11;--paper:#f5f2ed;--warm:#ede8df;--rule:#d4cfc6;
@@ -94,6 +97,13 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
 .field label{display:block;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
 .field input[type=text]{width:100%;background:var(--warm);border:1px solid var(--rule);color:var(--ink);border-radius:6px;padding:9px 12px;font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border-color .2s}
 .field input[type=text]:focus{border-color:var(--accent)}
+.field textarea{min-height:72px;font-size:12px}
+.ref-asr-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px}
+.ref-asr-st{font-size:10px;color:var(--muted);flex:1;min-height:14px}
+.ref-asr-st.ok{color:var(--accent2)}.ref-asr-st.err{color:var(--danger)}.ref-asr-st.busy{color:var(--accent)}
+.btn-asr-retry{flex-shrink:0;background:transparent;border:1px solid var(--rule);color:var(--muted);padding:4px 10px;border-radius:5px;font-family:'DM Mono',monospace;font-size:10px;cursor:pointer;transition:all .15s}
+.btn-asr-retry:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.btn-asr-retry:disabled{opacity:.35;cursor:not-allowed}
 .uz{border:1.5px dashed var(--rule);border-radius:8px;padding:28px 20px;text-align:center;cursor:pointer;transition:all .2s;position:relative;margin-bottom:12px}
 .uz:hover,.uz.drag{border-color:var(--accent);background:rgba(200,82,42,.04)}
 .uz input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
@@ -118,6 +128,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
 .toggle input:checked+.ts::before{transform:translateX(16px)}
 .ps2{display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--warm);border:1px solid var(--rule);border-radius:6px;margin-bottom:12px}
 .ps2.show{display:flex}
+.ref-preview{display:none;margin-bottom:12px;padding:10px 12px;background:var(--warm);border:1px solid var(--rule);border-radius:6px;align-items:center;gap:10px}
+.ref-preview.show{display:flex}
+.ref-preview .pb{width:32px;height:32px;font-size:12px}
+.ref-preview .ref-preview-hint{flex:1;font-size:10px;color:var(--muted);line-height:1.5}
+.ref-preview .ref-preview-hint strong{color:var(--ink);font-weight:500}
 .pw2{display:flex;align-items:center;gap:2px;height:20px}
 .pw2 span{display:block;width:3px;border-radius:2px;background:var(--accent2);animation:wv 1s ease-in-out infinite}
 .pw2 span:nth-child(2){animation-delay:.15s}
@@ -177,8 +192,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
     </div>
     <div class="card">
       <div class="ch">输入文字</div>
-      <textarea id="textInput" maxlength="500" placeholder="输入要克隆朗读的文字内容...&#10;&#10;示例：大家好，这是我的声音克隆测试。"></textarea>
-      <div class="mr"><span class="cc"><span id="charCount">0</span> / 500</span></div>
+      <textarea id="textInput" maxlength="2000" placeholder="输入要克隆朗读的文字内容...&#10;&#10;示例：大家好，这是我的声音克隆测试。"></textarea>
+      <div class="mr"><span class="cc"><span id="charCount">0</span> / 2000</span></div>
     </div>
     <div class="card">
       <div class="ch">合成参数</div>
@@ -237,6 +252,13 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
     <div class="field"><label>声音名称</label>
       <input type="text" id="voiceName" placeholder="例如：主播甲、旁白男声…" maxlength="20" oninput="checkSave()">
     </div>
+    <div class="field"><label>参考音频文稿</label>
+      <textarea id="refTextInput" maxlength="500" placeholder="上传或录音后将自动识别（需已填写 API Key），也可手动修改" oninput="checkSave()"></textarea>
+      <div class="ref-asr-row">
+        <div class="ref-asr-st" id="refAsrSt"></div>
+        <button type="button" class="btn-asr-retry" id="refAsrRetry" onclick="retryRefAsr()" disabled>自动识别</button>
+      </div>
+    </div>
     <div class="nr">
       <div><div class="nl">🎙 背景降噪</div><div class="ns">自动去除背景噪音，提升克隆质量</div></div>
       <label class="toggle"><input type="checkbox" id="noiseToggle" checked><span class="ts"></span></label>
@@ -258,6 +280,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
       <span class="pz" id="prevSize">—</span>
       <button class="pdel" onclick="clearAudio()">✕</button>
       <div class="no" id="noiseOv"><div class="nsp"></div><span>降噪处理中…</span></div>
+    </div>
+    <div class="ref-preview" id="refPreview">
+      <button type="button" class="pb" id="refPlayBtn" onclick="toggleRefPreview()" title="试听参考音频">▶</button>
+      <div class="ref-preview-hint"><strong>试听参考音频</strong><br>对照上方文稿是否与录音一致</div>
+      <audio id="refAudioEl" style="display:none"></audio>
     </div>
     <div class="mb">
       <button class="btn-cancel" onclick="closeModal()">取消</button>
@@ -334,6 +361,9 @@ let mediaRec    = null;
 let recChunks   = [];
 let isRecording = false;
 let currentAudioURL = null;
+let asrAbort = null;
+let liveSpeechRec = null;
+let refAudioURL = null;
 
 // ══════════════════════════════════════════════════════
 // INIT
@@ -433,9 +463,17 @@ function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/
 // ══════════════════════════════════════════════════════
 function openModal() {
   pendingBlob=null;
+  if (asrAbort) { asrAbort.abort(); asrAbort=null; }
   document.getElementById('voiceName').value='';
+  document.getElementById('refTextInput').value='';
+  document.getElementById('refAsrSt').textContent='';
+  document.getElementById('refAsrSt').className='ref-asr-st';
+  document.getElementById('refAsrRetry').disabled=true;
   document.getElementById('saveBtn').disabled=true;
   document.getElementById('prevStrip').classList.remove('show');
+  if (refAudioURL) { URL.revokeObjectURL(refAudioURL); refAudioURL = null; }
+  document.getElementById('refAudioEl').src = '';
+  document.getElementById('refPreview').classList.remove('show');
   document.getElementById('recBtn').classList.remove('rec');
   document.getElementById('recLabel').textContent='实时录音';
   if (isRecording) stopRec();
@@ -444,9 +482,120 @@ function openModal() {
 function closeModal() {
   document.getElementById('modalBg').classList.remove('show');
   if (isRecording) stopRec();
+  if (liveSpeechRec) {
+    try { liveSpeechRec.stop(); } catch { /* ignore */ }
+    liveSpeechRec = null;
+  }
+  if (asrAbort) { asrAbort.abort(); asrAbort=null; }
+  if (refAudioURL) { URL.revokeObjectURL(refAudioURL); refAudioURL = null; }
+  document.getElementById('refAudioEl').src = '';
+  document.getElementById('refPreview').classList.remove('show');
   pendingBlob=null;
 }
 function closeBg(e) { if (e.target===document.getElementById('modalBg')) closeModal(); }
+
+function setRefAsrStatus(text, cls='') {
+  const el = document.getElementById('refAsrSt');
+  el.textContent = text;
+  el.className = 'ref-asr-st' + (cls ? ' '+cls : '');
+}
+
+/** 浏览器实时听写（仅录音时可用） */
+function createLiveSpeechCapture() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return null;
+  const rec = new SR();
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.lang = speechLangFromSelect();
+  let finalText = '';
+  rec.onresult = (e) => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) finalText += t;
+      else interim += t;
+    }
+    const ta = document.getElementById('refTextInput');
+    const combined = (finalText + interim).trim();
+    if (combined) ta.value = combined.slice(0, 500);
+    checkSave();
+  };
+  rec.onerror = () => { /* 静默，可改用手动或 ASR */ };
+  return rec;
+}
+function speechLangFromSelect() {
+  const v = document.getElementById('langSel')?.value || 'zh-cn';
+  const map = { 'zh-cn':'zh-CN', en:'en-US', ja:'ja-JP', ko:'ko-KR', fr:'fr-FR', es:'es-ES', de:'de-DE' };
+  return map[v] || 'zh-CN';
+}
+
+/** Fish Audio ASR：从音频 blob 识别参考文稿 */
+async function transcribeReferenceAudio(blob) {
+  const key = document.getElementById('apiKey').value.trim();
+  if (key.length < 20) {
+    setRefAsrStatus('填写 API Key 后可自动识别；也可手动输入文稿', 'err');
+    return;
+  }
+  if (asrAbort) asrAbort.abort();
+  asrAbort = new AbortController();
+  setRefAsrStatus('正在识别参考音频文稿…', 'busy');
+  try {
+    let upload = blob;
+    if (!(blob.type || '').toLowerCase().includes('wav')) {
+      try { upload = await denoiseAudio(blob); } catch { /* 原格式上传 */ }
+    }
+    const fd = new FormData();
+    fd.append('audio', upload, 'reference.wav');
+    const lang = document.getElementById('langSel').value;
+    const endpoints = [
+      `${getApiBase()}/v1/asr?language=${encodeURIComponent(lang)}`,
+      `${getApiBase()}/v1/asr`,
+    ];
+    let lastErr = '';
+    for (const url of endpoints) {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${key}` },
+        body: fd,
+        signal: asrAbort.signal,
+      });
+      const raw = await resp.text();
+      if (!resp.ok) {
+        lastErr = parseApiError(resp, raw);
+        if (resp.status === 404) continue;
+        throw new Error(lastErr);
+      }
+      const text = extractAsrText(raw);
+      if (text) {
+        document.getElementById('refTextInput').value = text.slice(0, 500);
+        setRefAsrStatus('✓ 已自动填入，请核对是否与音频一致', 'ok');
+        checkSave();
+        return;
+      }
+      lastErr = '识别结果为空';
+    }
+    throw new Error(lastErr || 'ASR 不可用');
+  } catch (e) {
+    if (e.name === 'AbortError') return;
+    setRefAsrStatus('自动识别失败：' + (e.message || '请手动填写文稿'), 'err');
+  } finally {
+    asrAbort = null;
+  }
+}
+
+function extractAsrText(raw) {
+  if (!raw) return '';
+  try {
+    const j = JSON.parse(raw);
+    const t = j.text ?? j.transcript ?? j.result ?? j.data?.text ?? j.data?.transcript;
+    if (typeof t === 'string') return t.trim();
+    if (Array.isArray(j.segments)) {
+      return j.segments.map(s => s.text || s.transcript || '').join('').trim();
+    }
+  } catch { /* 纯文本 */ }
+  return raw.trim();
+}
 
 // ── file ──
 function onFile(e) { const f=e.target.files[0]; if(f) handleFile(f); e.target.value=''; }
@@ -465,31 +614,62 @@ async function handleFile(file) {
     document.getElementById('noiseOv').classList.remove('show');
   }
   showPreview(file.name, pendingBlob.size || file.size);
+  document.getElementById('refTextInput').value = '';
+  transcribeReferenceAudio(pendingBlob);
 }
 function showPreview(name, size) {
   document.getElementById('prevName').textContent = name;
   document.getElementById('prevSize').textContent = fmtSz(size);
   document.getElementById('prevStrip').classList.add('show');
+  document.getElementById('refAsrRetry').disabled = !pendingBlob;
+  // wire up audio preview
+  if (refAudioURL) URL.revokeObjectURL(refAudioURL);
+  refAudioURL = URL.createObjectURL(pendingBlob);
+  const a = document.getElementById('refAudioEl');
+  a.src = refAudioURL;
+  a.onended = () => { document.getElementById('refPlayBtn').textContent = '▶'; };
+  document.getElementById('refPlayBtn').textContent = '▶';
+  document.getElementById('refPreview').classList.add('show');
   checkSave();
+}
+function retryRefAsr() {
+  if (pendingBlob) transcribeReferenceAudio(pendingBlob);
+}
+function toggleRefPreview() {
+  const a = document.getElementById('refAudioEl');
+  const b = document.getElementById('refPlayBtn');
+  if (!a.src) return;
+  if (a.paused) { a.play(); b.textContent = '⏸'; }
+  else { a.pause(); b.textContent = '▶'; }
 }
 function clearAudio() {
   pendingBlob=null;
+  if (asrAbort) { asrAbort.abort(); asrAbort=null; }
+  document.getElementById('refTextInput').value='';
+  setRefAsrStatus('');
   document.getElementById('prevStrip').classList.remove('show');
+  if (refAudioURL) { URL.revokeObjectURL(refAudioURL); refAudioURL = null; }
+  document.getElementById('refAudioEl').src = '';
+  document.getElementById('refPreview').classList.remove('show');
   checkSave();
 }
 function checkSave() {
-  const ok = !!pendingBlob && document.getElementById('voiceName').value.trim().length>0;
+  const ok = !!pendingBlob
+    && document.getElementById('voiceName').value.trim().length>0
+    && document.getElementById('refTextInput').value.trim().length>0;
   document.getElementById('saveBtn').disabled=!ok;
 }
 
 // ── save ──
 async function saveVoice() {
   const name = document.getElementById('voiceName').value.trim();
-  if (!name||!pendingBlob) return;
+  const refText = document.getElementById('refTextInput').value.trim();
+  if (!name||!pendingBlob||!refText) return;
   const ab  = await pendingBlob.arrayBuffer();
   const id  = 'v_'+Date.now();
   const obj = {
     id, name,
+    refText,
     audioBuf: ab,
     mime: pendingBlob.type||'audio/wav',
     size: fmtSz(pendingBlob.size),
@@ -511,11 +691,44 @@ async function toggleRec() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({audio:true});
       recChunks=[]; mediaRec=new MediaRecorder(stream);
+      document.getElementById('refTextInput').value='';
+      liveSpeechRec = createLiveSpeechCapture();
+      if (liveSpeechRec) {
+        try {
+          liveSpeechRec.start();
+          setRefAsrStatus('录音中：浏览器正在实时听写…', 'busy');
+        } catch { liveSpeechRec=null; }
+      } else {
+        setRefAsrStatus('录音后将通过 API 自动识别文稿', 'busy');
+      }
       mediaRec.ondataavailable = e => recChunks.push(e.data);
       mediaRec.onstop = async () => {
         stream.getTracks().forEach(t=>t.stop());
+        if (liveSpeechRec) {
+          try { liveSpeechRec.stop(); } catch { /* ignore */ }
+          liveSpeechRec = null;
+        }
         const blob = new Blob(recChunks,{type:'audio/webm'});
-        await handleFile(new File([blob],'录音.webm',{type:'audio/webm'}));
+        const file = new File([blob],'录音.webm',{type:'audio/webm'});
+        const denoise = document.getElementById('noiseToggle').checked;
+        document.getElementById('prevStrip').classList.add('show');
+        document.getElementById('noiseOv').classList.add('show');
+        try {
+          if (denoise) {
+            try { pendingBlob = await denoiseAudio(file); }
+            catch { pendingBlob = file; }
+          } else pendingBlob = file;
+        } finally {
+          document.getElementById('noiseOv').classList.remove('show');
+        }
+        showPreview('录音.webm', pendingBlob.size || file.size);
+        const hasRef = document.getElementById('refTextInput').value.trim().length > 0;
+        if (hasRef) {
+          setRefAsrStatus('✓ 已自动填入，请核对是否与音频一致', 'ok');
+          checkSave();
+        } else {
+          await transcribeReferenceAudio(pendingBlob);
+        }
       };
       mediaRec.start(); isRecording=true;
       document.getElementById('recBtn').classList.add('rec');
@@ -568,6 +781,37 @@ function audioBufferToWav(buf) {
   return new Blob([ab],{type:'audio/wav'});
 }
 
+/** Fish 参考音频建议 WAV；webm/mp3 等先解码再转 WAV。返回独立 Uint8Array 供 msgpack 编码为 bin。 */
+async function ensureWavBytes(voice) {
+  const mime = (voice.mime || '').toLowerCase();
+  let ab;
+  if (mime.includes('wav')) ab = voice.audioBuf;
+  else {
+    const blob = new Blob([voice.audioBuf], { type: voice.mime || 'audio/wav' });
+    ab = await (await denoiseAudio(blob)).arrayBuffer();
+  }
+  const u8 = new Uint8Array(ab);
+  return new Uint8Array(u8);
+}
+
+function parseApiError(resp, bodyText) {
+  let msg = `HTTP ${resp.status}`;
+  if (bodyText) {
+    try {
+      const j = JSON.parse(bodyText);
+      msg = j.message || j.error || j.detail || (typeof j === 'string' ? j : JSON.stringify(j));
+    } catch {
+      if (bodyText.length < 200) msg = bodyText;
+    }
+  }
+  if (resp.status === 402) return '余额不足，请前往 fish.audio 充值';
+  if (resp.status === 401) return 'API Key 无效，请检查';
+  if (resp.status === 400) {
+    return `${msg}。请确认：① 参考文稿与音频内容一致；② 样本约 15–30 秒清晰人声；③ 旧样本需删除后重新添加并填写文稿`;
+  }
+  return msg;
+}
+
 // ══════════════════════════════════════════════════════
 // GENERATE — Fish Audio API with msgpack
 // ══════════════════════════════════════════════════════
@@ -585,10 +829,16 @@ function checkReady() {
 async function generate() {
   const key     = document.getElementById('apiKey').value.trim();
   const text    = document.getElementById('textInput').value.trim();
+  const lang    = document.getElementById('langSel').value;
   const spd     = parseFloat(document.getElementById('speedRange').value);
   const latency = document.getElementById('latencySel').value;
   const voice   = voices.find(v=>v.id===activeVoice);
   if (!voice) return;
+  const refText = (voice.refText || '').trim();
+  if (!refText) {
+    toast('✕ 该声音样本缺少参考文稿，请删除后重新添加并填写与录音一致的文字','err');
+    return;
+  }
 
   const btn = document.getElementById('genBtn');
   btn.disabled=true;
@@ -610,17 +860,21 @@ async function generate() {
   try {
     // Fish Audio API 要求 msgpack 序列化才能传 reference audio bytes
     // 参考: https://docs.fish.audio/developer-guide/core-features/text-to-speech#direct-api-usage
-    const audioBytes = new Uint8Array(voice.audioBuf);
+    const audioBytes = await ensureWavBytes(voice);
 
+    // 字段与 fish-audio SDK 的 TTSRequest 一致；references[].audio 必须是 Uint8Array + @msgpack/msgpack
     const payload = {
       text,
-      references: [{ audio: audioBytes, text: '' }],
+      references: [{ audio: audioBytes, text: refText }],
       format: 'wav',
       latency,
-      prosody: { speed: spd, volume: 0, normalize_loudness: true },
+      normalize: true,
+      prosody: { speed: spd },
     };
 
-    const packed = msgpack.encode(payload);
+    const encodeMsgpack = window.fishMsgpackEncode;
+    if (!encodeMsgpack) throw new Error('msgpack 库加载中，请稍候再试');
+    const packed = encodeMsgpack(payload);
 
     const resp = await fetch(`${getApiBase()}/v1/tts`, {
       method: 'POST',
@@ -635,11 +889,8 @@ async function generate() {
     clearInterval(iv);
 
     if (!resp.ok) {
-      let msg = `HTTP ${resp.status}`;
-      try { const j=await resp.json(); msg=j.message||msg; } catch {}
-      if (resp.status===402) msg='余额不足，请前往 fish.audio 充值';
-      if (resp.status===401) msg='API Key 无效，请检查';
-      throw new Error(msg);
+      const bodyText = await resp.text();
+      throw new Error(parseApiError(resp, bodyText));
     }
 
     const audioData = await resp.arrayBuffer();
