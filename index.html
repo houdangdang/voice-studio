@@ -6,429 +6,188 @@
 <title>VoiceForge</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<!-- msgpack for Fish Audio API serialization -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/msgpack-lite/0.1.26/msgpack.min.js"></script>
 <style>
-:root {
-  --ink: #0f0e11;
-  --paper: #f5f2ed;
-  --warm: #ede8df;
-  --rule: #d4cfc6;
-  --accent: #c8522a;
-  --accent2: #4a7c6f;
-  --muted: #8a8479;
-  --surface: #fff;
-  --danger: #b84040;
+:root{
+  --ink:#0f0e11;--paper:#f5f2ed;--warm:#ede8df;--rule:#d4cfc6;
+  --accent:#c8522a;--accent2:#4a7c6f;--muted:#8a8479;--surface:#fff;--danger:#b84040;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}
-body{
-  background:var(--paper);
-  color:var(--ink);
-  font-family:'DM Mono',monospace;
-  min-height:100vh;
-  font-size:13px;
-}
-
-/* ── grain overlay ── */
-body::after{
-  content:'';position:fixed;inset:0;
-  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
-  pointer-events:none;z-index:999;opacity:.5;
-}
-
-/* ── layout ── */
+body{background:var(--paper);color:var(--ink);font-family:'DM Mono',monospace;min-height:100vh;font-size:13px}
+body::after{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");pointer-events:none;z-index:999;opacity:.5}
 .app{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
-
-/* ── sidebar ── */
-.sidebar{
-  background:var(--ink);color:var(--paper);
-  padding:28px 20px;
-  display:flex;flex-direction:column;gap:0;
-  position:sticky;top:0;height:100vh;overflow-y:auto;
-}
-.logo{
-  font-family:'DM Serif Display',serif;
-  font-size:22px;letter-spacing:.02em;
-  margin-bottom:4px;
-}
+.sidebar{background:var(--ink);color:var(--paper);padding:28px 20px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
+.logo{font-family:'DM Serif Display',serif;font-size:22px;letter-spacing:.02em;margin-bottom:4px}
 .logo em{color:var(--accent);font-style:italic}
 .tagline{font-size:10px;color:#6b6760;letter-spacing:.2em;text-transform:uppercase;margin-bottom:28px}
-
-.section-title{
-  font-size:9px;letter-spacing:.35em;text-transform:uppercase;
-  color:#6b6760;margin:20px 0 10px;
-  border-top:1px solid #2a2928;padding-top:16px;
-}
-.section-title:first-of-type{margin-top:0;border-top:none;padding-top:0}
-
-/* api key */
+.sec{font-size:9px;letter-spacing:.35em;text-transform:uppercase;color:#6b6760;margin:20px 0 10px;border-top:1px solid #2a2928;padding-top:16px}
+.sec:first-of-type{margin-top:0;border-top:none;padding-top:0}
 .key-wrap{position:relative}
-.key-input{
-  width:100%;background:#1e1d1c;border:1px solid #333;
-  color:var(--paper);border-radius:6px;padding:9px 36px 9px 10px;
-  font-family:'DM Mono',monospace;font-size:11px;outline:none;
-  transition:border-color .2s;
-}
+.key-input{width:100%;background:#1e1d1c;border:1px solid #333;color:var(--paper);border-radius:6px;padding:9px 36px 9px 10px;font-family:'DM Mono',monospace;font-size:11px;outline:none;transition:border-color .2s}
 .key-input:focus{border-color:var(--accent)}
 .key-input::placeholder{color:#555}
-.key-eye{
-  position:absolute;right:8px;top:50%;transform:translateY(-50%);
-  background:none;border:none;color:#666;cursor:pointer;font-size:13px;
-  padding:2px;transition:color .2s;
-}
+.key-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:#666;cursor:pointer;font-size:13px;padding:2px;transition:color .2s}
 .key-eye:hover{color:var(--paper)}
-.key-status{font-size:10px;margin-top:5px;min-height:14px}
-.key-status.ok{color:var(--accent2)}
-.key-status.err{color:var(--danger)}
-
-/* voices */
-.voice-list{display:flex;flex-direction:column;gap:6px;flex:1}
-.voice-item{
-  display:flex;align-items:center;gap:8px;
-  background:#1e1d1c;border:1px solid #2a2928;border-radius:6px;
-  padding:8px 10px;cursor:pointer;transition:all .15s;
-  position:relative;
-}
+.key-st{font-size:10px;margin-top:5px;min-height:14px}
+.key-st.ok{color:var(--accent2)}.key-st.err{color:var(--danger)}
+.voice-list{display:flex;flex-direction:column;gap:6px;flex:1;overflow-y:auto}
+.voice-item{display:flex;align-items:center;gap:8px;background:#1e1d1c;border:1px solid #2a2928;border-radius:6px;padding:8px 10px;cursor:pointer;transition:all .15s}
 .voice-item:hover{border-color:#444}
 .voice-item.active{border-color:var(--accent);background:#2a1a10}
-.voice-avatar{
-  width:28px;height:28px;border-radius:50%;
-  background:linear-gradient(135deg,var(--accent),#e8834a);
-  display:flex;align-items:center;justify-content:center;
-  font-size:11px;font-weight:500;color:white;flex-shrink:0;
-  font-family:'DM Serif Display',serif;
-}
-.voice-info{flex:1;min-width:0}
-.voice-name{font-size:11px;color:var(--paper);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.voice-meta{font-size:9px;color:#555;margin-top:1px}
-.voice-del{
-  background:none;border:none;color:#444;cursor:pointer;
-  font-size:12px;padding:2px 4px;transition:color .15s;flex-shrink:0;
-}
-.voice-del:hover{color:var(--danger)}
-.voice-add{
-  display:flex;align-items:center;justify-content:center;gap:6px;
-  background:transparent;border:1px dashed #333;border-radius:6px;
-  color:#666;padding:8px;cursor:pointer;font-family:'DM Mono',monospace;
-  font-size:11px;transition:all .15s;width:100%;
-}
+.va{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#e8834a);display:flex;align-items:center;justify-content:center;font-size:11px;color:white;flex-shrink:0;font-family:'DM Serif Display',serif}
+.vi{flex:1;min-width:0}
+.vn{font-size:11px;color:var(--paper);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vm{font-size:9px;color:#555;margin-top:1px}
+.vd{background:none;border:none;color:#444;cursor:pointer;font-size:12px;padding:2px 4px;transition:color .15s;flex-shrink:0}
+.vd:hover{color:var(--danger)}
+.voice-add{display:flex;align-items:center;justify-content:center;gap:6px;background:transparent;border:1px dashed #333;border-radius:6px;color:#666;padding:8px;cursor:pointer;font-family:'DM Mono',monospace;font-size:11px;transition:all .15s;width:100%;margin-top:8px}
 .voice-add:hover{border-color:#666;color:var(--paper)}
-.empty-voices{
-  text-align:center;color:#555;font-size:11px;padding:20px 0;line-height:1.8;
-}
-
-/* ── main area ── */
+.ev{text-align:center;color:#555;font-size:11px;padding:20px 0;line-height:1.8}
 .main{padding:36px 40px;max-width:740px}
-.page-header{margin-bottom:32px}
-.page-title{font-family:'DM Serif Display',serif;font-size:32px;font-weight:400;line-height:1.1}
-.page-title em{color:var(--accent);font-style:italic}
-.page-sub{color:var(--muted);font-size:11px;margin-top:6px;letter-spacing:.05em}
-
-/* cards */
-.card{
-  background:var(--surface);border:1px solid var(--rule);
-  border-radius:10px;padding:22px 24px;margin-bottom:16px;
-}
-.card-head{
-  font-size:9px;letter-spacing:.35em;text-transform:uppercase;
-  color:var(--muted);margin-bottom:14px;display:flex;align-items:center;gap:8px;
-}
-.card-head::after{content:'';flex:1;height:1px;background:var(--rule)}
-
-/* textarea */
-textarea{
-  width:100%;background:var(--warm);border:1px solid var(--rule);
-  color:var(--ink);border-radius:7px;padding:14px 16px;
-  font-family:'DM Mono',monospace;font-size:13px;line-height:1.8;
-  resize:vertical;min-height:120px;outline:none;
-  transition:border-color .2s;
-}
+.ph{margin-bottom:32px}
+.pt{font-family:'DM Serif Display',serif;font-size:32px;font-weight:400;line-height:1.1}
+.pt em{color:var(--accent);font-style:italic}
+.ps{color:var(--muted);font-size:11px;margin-top:6px;letter-spacing:.05em}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:22px 24px;margin-bottom:16px}
+.ch{font-size:9px;letter-spacing:.35em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.ch::after{content:'';flex:1;height:1px;background:var(--rule)}
+textarea{width:100%;background:var(--warm);border:1px solid var(--rule);color:var(--ink);border-radius:7px;padding:14px 16px;font-family:'DM Mono',monospace;font-size:13px;line-height:1.8;resize:vertical;min-height:120px;outline:none;transition:border-color .2s}
 textarea:focus{border-color:var(--accent)}
 textarea::placeholder{color:var(--muted)}
-.meta-row{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
-.char-count{font-size:10px;color:var(--muted)}
-
-/* options */
+.mr{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.cc{font-size:10px;color:var(--muted)}
 .opts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:4px}
-.opt-group label{
-  display:block;font-size:9px;letter-spacing:.25em;text-transform:uppercase;
-  color:var(--muted);margin-bottom:6px;
-}
-select{
-  width:100%;background:var(--warm);border:1px solid var(--rule);
-  color:var(--ink);border-radius:6px;padding:8px 10px;
-  font-family:'DM Mono',monospace;font-size:11px;outline:none;
-  transition:border-color .2s;cursor:pointer;
-}
+.og label{display:block;font-size:9px;letter-spacing:.25em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+select{width:100%;background:var(--warm);border:1px solid var(--rule);color:var(--ink);border-radius:6px;padding:8px 10px;font-family:'DM Mono',monospace;font-size:11px;outline:none;transition:border-color .2s;cursor:pointer}
 select:focus{border-color:var(--accent)}
-.speed-val{color:var(--accent);font-weight:500}
-input[type=range]{
-  width:100%;-webkit-appearance:none;height:2px;
-  background:var(--rule);border-radius:1px;cursor:pointer;margin-top:10px;
-}
-input[type=range]::-webkit-slider-thumb{
-  -webkit-appearance:none;width:12px;height:12px;border-radius:50%;
-  background:var(--accent);cursor:pointer;
-}
-.range-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:4px}
-
-/* generate btn */
-.btn-gen{
-  width:100%;padding:14px;
-  background:var(--ink);color:var(--paper);
-  border:none;border-radius:8px;
-  font-family:'DM Mono',monospace;font-size:13px;font-weight:500;
-  letter-spacing:.08em;cursor:pointer;transition:all .2s;
-  display:flex;align-items:center;justify-content:center;gap:8px;
-}
+.sv{color:var(--accent);font-weight:500}
+input[type=range]{width:100%;-webkit-appearance:none;height:2px;background:var(--rule);border-radius:1px;cursor:pointer;margin-top:10px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--accent);cursor:pointer}
+.rl{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:4px}
+.btn-gen{width:100%;padding:14px;background:var(--ink);color:var(--paper);border:none;border-radius:8px;font-family:'DM Mono',monospace;font-size:13px;font-weight:500;letter-spacing:.08em;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}
 .btn-gen:hover:not(:disabled){background:#2a2826;transform:translateY(-1px)}
 .btn-gen:disabled{opacity:.4;cursor:not-allowed;transform:none}
-.btn-gen.loading{pointer-events:none}
-
-/* progress */
-.progress{margin-top:12px;display:none}
-.progress.show{display:block}
-.progress-track{height:2px;background:var(--rule);border-radius:1px;overflow:hidden}
-.progress-fill{
-  height:100%;background:linear-gradient(90deg,var(--accent),#e8834a);
-  border-radius:1px;width:0%;transition:width .4s;
-}
-.progress-label{font-size:10px;color:var(--muted);margin-top:6px;text-align:center}
-
-/* output */
+.prog{margin-top:12px;display:none}
+.prog.show{display:block}
+.pt2{height:2px;background:var(--rule);border-radius:1px;overflow:hidden}
+.pf{height:100%;background:linear-gradient(90deg,var(--accent),#e8834a);border-radius:1px;width:0%;transition:width .4s}
+.pl{font-size:10px;color:var(--muted);margin-top:6px;text-align:center}
 .output{display:none;margin-top:16px}
 .output.show{display:block}
-.player{
-  background:var(--warm);border:1px solid var(--rule);
-  border-radius:8px;padding:16px 20px;
-  display:flex;align-items:center;gap:14px;
-}
-.play-btn{
-  width:40px;height:40px;border-radius:50%;
-  background:var(--ink);color:var(--paper);
-  border:none;display:flex;align-items:center;justify-content:center;
-  cursor:pointer;transition:all .2s;flex-shrink:0;font-size:14px;
-}
-.play-btn:hover{background:var(--accent)}
-.player-track{flex:1}
-.player-title{font-size:11px;color:var(--ink);margin-bottom:8px}
-.prog-wrap{height:2px;background:var(--rule);border-radius:1px;cursor:pointer;position:relative}
-.prog-fill{height:100%;background:var(--accent);border-radius:1px;width:0%;transition:width .1s}
-.player-time{font-size:10px;color:var(--muted);margin-top:5px}
-.btn-dl{
-  background:transparent;border:1px solid var(--rule);color:var(--ink);
-  padding:8px 14px;border-radius:6px;cursor:pointer;
-  font-family:'DM Mono',monospace;font-size:10px;
-  transition:all .15s;white-space:nowrap;flex-shrink:0;
-}
+.player{background:var(--warm);border:1px solid var(--rule);border-radius:8px;padding:16px 20px;display:flex;align-items:center;gap:14px}
+.pb{width:40px;height:40px;border-radius:50%;background:var(--ink);color:var(--paper);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;flex-shrink:0;font-size:14px}
+.pb:hover{background:var(--accent)}
+.ptr{flex:1}
+.ptit{font-size:11px;color:var(--ink);margin-bottom:8px}
+.pw{height:2px;background:var(--rule);border-radius:1px;cursor:pointer;position:relative}
+.pff{height:100%;background:var(--accent);border-radius:1px;width:0%;transition:width .1s}
+.ptime{font-size:10px;color:var(--muted);margin-top:5px}
+.btn-dl{background:transparent;border:1px solid var(--rule);color:var(--ink);padding:8px 14px;border-radius:6px;cursor:pointer;font-family:'DM Mono',monospace;font-size:10px;transition:all .15s;white-space:nowrap;flex-shrink:0}
 .btn-dl:hover{border-color:var(--ink)}
-
-/* modal */
-.modal-bg{
-  position:fixed;inset:0;background:rgba(15,14,17,.6);
-  backdrop-filter:blur(4px);z-index:100;display:none;
-  align-items:center;justify-content:center;
-}
+.modal-bg{position:fixed;inset:0;background:rgba(15,14,17,.6);backdrop-filter:blur(4px);z-index:100;display:none;align-items:center;justify-content:center}
 .modal-bg.show{display:flex}
-.modal{
-  background:var(--surface);border:1px solid var(--rule);
-  border-radius:12px;padding:28px;width:440px;max-width:90vw;
-}
-.modal-title{font-family:'DM Serif Display',serif;font-size:20px;margin-bottom:6px}
-.modal-sub{font-size:11px;color:var(--muted);margin-bottom:20px;line-height:1.6}
+.modal{background:var(--surface);border:1px solid var(--rule);border-radius:12px;padding:28px;width:440px;max-width:90vw}
+.mt{font-family:'DM Serif Display',serif;font-size:20px;margin-bottom:6px}
+.ms{font-size:11px;color:var(--muted);margin-bottom:20px;line-height:1.6}
 .field{margin-bottom:14px}
 .field label{display:block;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-.field input[type=text]{
-  width:100%;background:var(--warm);border:1px solid var(--rule);
-  color:var(--ink);border-radius:6px;padding:9px 12px;
-  font-family:'DM Mono',monospace;font-size:12px;outline:none;
-  transition:border-color .2s;
-}
+.field input[type=text]{width:100%;background:var(--warm);border:1px solid var(--rule);color:var(--ink);border-radius:6px;padding:9px 12px;font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border-color .2s}
 .field input[type=text]:focus{border-color:var(--accent)}
-
-/* upload zone */
-.upload-zone{
-  border:1.5px dashed var(--rule);border-radius:8px;
-  padding:28px 20px;text-align:center;cursor:pointer;
-  transition:all .2s;position:relative;margin-bottom:12px;
-}
-.upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:rgba(200,82,42,.04)}
-.upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
-.upload-icon{font-size:28px;margin-bottom:8px;display:block}
-.upload-text{font-size:11px;color:var(--muted);line-height:1.7}
-.upload-text strong{color:var(--accent)}
-
-/* record btn */
-.rec-row{display:flex;align-items:center;gap:10px;margin-bottom:14px}
-.btn-rec{
-  flex:1;display:flex;align-items:center;justify-content:center;gap:8px;
-  background:transparent;border:1px solid var(--rule);color:var(--ink);
-  padding:9px;border-radius:6px;cursor:pointer;
-  font-family:'DM Mono',monospace;font-size:11px;transition:all .15s;
-}
+.uz{border:1.5px dashed var(--rule);border-radius:8px;padding:28px 20px;text-align:center;cursor:pointer;transition:all .2s;position:relative;margin-bottom:12px}
+.uz:hover,.uz.drag{border-color:var(--accent);background:rgba(200,82,42,.04)}
+.uz input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.ui{font-size:28px;margin-bottom:8px;display:block}
+.ut{font-size:11px;color:var(--muted);line-height:1.7}
+.ut strong{color:var(--accent)}
+.rr{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.btn-rec{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;background:transparent;border:1px solid var(--rule);color:var(--ink);padding:9px;border-radius:6px;cursor:pointer;font-family:'DM Mono',monospace;font-size:11px;transition:all .15s}
 .btn-rec:hover{border-color:var(--ink)}
 .btn-rec.rec{border-color:var(--danger);color:var(--danger)}
-.rec-dot{width:7px;height:7px;border-radius:50%;background:currentColor}
-.btn-rec.rec .rec-dot{animation:blink .8s infinite}
+.rdd{width:7px;height:7px;border-radius:50%;background:currentColor}
+.btn-rec.rec .rdd{animation:blink .8s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
-
-/* noise reduction toggle */
-.noise-row{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:10px 14px;background:var(--warm);border:1px solid var(--rule);
-  border-radius:6px;margin-bottom:12px;
-}
-.noise-label{font-size:11px;color:var(--ink)}
-.noise-sub{font-size:9px;color:var(--muted);margin-top:2px}
-.toggle{
-  position:relative;width:36px;height:20px;flex-shrink:0;
-}
+.nr{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--warm);border:1px solid var(--rule);border-radius:6px;margin-bottom:12px}
+.nl{font-size:11px;color:var(--ink)}
+.ns{font-size:9px;color:var(--muted);margin-top:2px}
+.toggle{position:relative;width:36px;height:20px;flex-shrink:0}
 .toggle input{opacity:0;width:0;height:0}
-.toggle-slider{
-  position:absolute;inset:0;background:var(--rule);border-radius:10px;
-  cursor:pointer;transition:.2s;
-}
-.toggle-slider::before{
-  content:'';position:absolute;width:14px;height:14px;
-  left:3px;top:3px;background:white;border-radius:50%;transition:.2s;
-}
-.toggle input:checked+.toggle-slider{background:var(--accent2)}
-.toggle input:checked+.toggle-slider::before{transform:translateX(16px)}
-
-/* preview strip */
-.preview-strip{
-  display:none;align-items:center;gap:10px;
-  padding:10px 14px;background:var(--warm);border:1px solid var(--rule);
-  border-radius:6px;margin-bottom:12px;
-}
-.preview-strip.show{display:flex}
-.preview-wave{display:flex;align-items:center;gap:2px;height:20px}
-.preview-wave span{
-  display:block;width:3px;border-radius:2px;background:var(--accent2);
-  animation:wv 1s ease-in-out infinite;
-}
-.preview-wave span:nth-child(2){animation-delay:.15s}
-.preview-wave span:nth-child(3){animation-delay:.3s}
-.preview-wave span:nth-child(4){animation-delay:.45s}
-.preview-wave span:nth-child(5){animation-delay:.6s}
+.ts{position:absolute;inset:0;background:var(--rule);border-radius:10px;cursor:pointer;transition:.2s}
+.ts::before{content:'';position:absolute;width:14px;height:14px;left:3px;top:3px;background:white;border-radius:50%;transition:.2s}
+.toggle input:checked+.ts{background:var(--accent2)}
+.toggle input:checked+.ts::before{transform:translateX(16px)}
+.ps2{display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--warm);border:1px solid var(--rule);border-radius:6px;margin-bottom:12px}
+.ps2.show{display:flex}
+.pw2{display:flex;align-items:center;gap:2px;height:20px}
+.pw2 span{display:block;width:3px;border-radius:2px;background:var(--accent2);animation:wv 1s ease-in-out infinite}
+.pw2 span:nth-child(2){animation-delay:.15s}
+.pw2 span:nth-child(3){animation-delay:.3s}
+.pw2 span:nth-child(4){animation-delay:.45s}
+.pw2 span:nth-child(5){animation-delay:.6s}
 @keyframes wv{0%,100%{height:4px}50%{height:16px}}
-.preview-name{flex:1;font-size:11px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.preview-size{font-size:10px;color:var(--muted)}
-.preview-del{background:none;border:none;color:var(--muted);cursor:pointer;padding:2px 6px;transition:color .15s}
-.preview-del:hover{color:var(--danger)}
-
-/* modal buttons */
-.modal-btns{display:flex;gap:8px;margin-top:20px;justify-content:flex-end}
-.btn-cancel{
-  background:transparent;border:1px solid var(--rule);color:var(--muted);
-  padding:9px 18px;border-radius:6px;cursor:pointer;
-  font-family:'DM Mono',monospace;font-size:12px;transition:all .15s;
-}
+.pn{flex:1;font-size:11px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pz{font-size:10px;color:var(--muted)}
+.pdel{background:none;border:none;color:var(--muted);cursor:pointer;padding:2px 6px;transition:color .15s}
+.pdel:hover{color:var(--danger)}
+.no{position:absolute;inset:0;background:rgba(245,242,237,.88);border-radius:6px;display:none;align-items:center;justify-content:center;gap:8px;font-size:11px;color:var(--muted);flex-direction:column;z-index:10}
+.no.show{display:flex}
+.nsp{width:20px;height:20px;border:2px solid var(--rule);border-top-color:var(--accent2);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.mb{display:flex;gap:8px;margin-top:20px;justify-content:flex-end}
+.btn-cancel{background:transparent;border:1px solid var(--rule);color:var(--muted);padding:9px 18px;border-radius:6px;cursor:pointer;font-family:'DM Mono',monospace;font-size:12px;transition:all .15s}
 .btn-cancel:hover{border-color:var(--muted);color:var(--ink)}
-.btn-save{
-  background:var(--ink);color:var(--paper);border:none;
-  padding:9px 20px;border-radius:6px;cursor:pointer;
-  font-family:'DM Mono',monospace;font-size:12px;transition:all .15s;
-}
+.btn-save{background:var(--ink);color:var(--paper);border:none;padding:9px 20px;border-radius:6px;cursor:pointer;font-family:'DM Mono',monospace;font-size:12px;transition:all .15s}
 .btn-save:hover{background:var(--accent)}
 .btn-save:disabled{opacity:.4;cursor:not-allowed}
-
-/* toast */
-.toast{
-  position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(60px);
-  background:var(--ink);color:var(--paper);padding:10px 20px;
-  border-radius:8px;font-size:12px;z-index:200;
-  transition:transform .25s;pointer-events:none;
-}
-.toast.ok{background:#2a4a3e}
-.toast.err{background:#4a2020}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(60px);background:var(--ink);color:var(--paper);padding:10px 20px;border-radius:8px;font-size:12px;z-index:200;transition:transform .25s;pointer-events:none}
+.toast.ok{background:#2a4a3e}.toast.err{background:#4a2020}
 .toast.show{transform:translateX(-50%) translateY(0)}
-
-/* noise processing overlay */
-.noise-overlay{
-  position:absolute;inset:0;background:rgba(245,242,237,.85);
-  border-radius:6px;display:none;align-items:center;justify-content:center;
-  gap:8px;font-size:11px;color:var(--muted);flex-direction:column;z-index:10;
-}
-.noise-overlay.show{display:flex}
-.noise-spinner{
-  width:20px;height:20px;border:2px solid var(--rule);
-  border-top-color:var(--accent2);border-radius:50%;
-  animation:spin .7s linear infinite;
-}
-@keyframes spin{to{transform:rotate(360deg)}}
-
-@media(max-width:700px){
-  .app{grid-template-columns:1fr}
-  .sidebar{position:relative;height:auto}
-  .main{padding:20px}
-  .opts{grid-template-columns:1fr 1fr}
-}
+@media(max-width:700px){.app{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.main{padding:20px}.opts{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
 <div class="app">
-
-  <!-- ── Sidebar ── -->
   <aside class="sidebar">
     <div class="logo">Voice<em>Forge</em></div>
     <div class="tagline">声音克隆 · 文字转语音</div>
-
-    <div class="section-title">API Key</div>
+    <div class="sec">API Key</div>
     <div class="key-wrap">
-      <input class="key-input" type="password" id="apiKey"
-        placeholder="sk-xxxxxxxxxxxxxxxx" oninput="onKeyInput()">
-      <button class="key-eye" onclick="toggleKey()" id="keyEye">👁</button>
+      <input class="key-input" type="password" id="apiKey" placeholder="sk-xxxxxxxxxxxxxxxx" oninput="onKeyInput()">
+      <button class="key-eye" onclick="toggleKey()">👁</button>
     </div>
-    <div class="key-status" id="keyStatus"></div>
-
-    <div class="section-title">声音样本库</div>
+    <div class="key-st" id="keySt"></div>
+    <div class="sec">声音样本库</div>
     <div class="voice-list" id="voiceList"></div>
-    <button class="voice-add" onclick="openModal()" style="margin-top:8px">
-      + 添加声音样本
-    </button>
+    <button class="voice-add" onclick="openModal()">+ 添加声音样本</button>
   </aside>
 
-  <!-- ── Main ── -->
   <main class="main">
-    <div class="page-header">
-      <h1 class="page-title">声音<em>克隆</em>工作台</h1>
-      <p class="page-sub">上传或录制声音样本 · 输入文字 · 一键生成克隆语音</p>
+    <div class="ph">
+      <h1 class="pt">声音<em>克隆</em>工作台</h1>
+      <p class="ps">上传或录制声音样本 · 输入文字 · 一键生成克隆语音</p>
     </div>
-
-    <!-- Text input -->
     <div class="card">
-      <div class="card-head">输入文字</div>
-      <textarea id="textInput" maxlength="500"
-        placeholder="输入要克隆朗读的文字内容...&#10;&#10;示例：大家好，这是我的声音克隆测试。"></textarea>
-      <div class="meta-row">
-        <span class="char-count"><span id="charCount">0</span> / 500</span>
-      </div>
+      <div class="ch">输入文字</div>
+      <textarea id="textInput" maxlength="500" placeholder="输入要克隆朗读的文字内容...&#10;&#10;示例：大家好，这是我的声音克隆测试。"></textarea>
+      <div class="mr"><span class="cc"><span id="charCount">0</span> / 500</span></div>
     </div>
-
-    <!-- Options -->
     <div class="card">
-      <div class="card-head">合成参数</div>
+      <div class="ch">合成参数</div>
       <div class="opts">
-        <div class="opt-group">
-          <label>语言</label>
+        <div class="og"><label>语言</label>
           <select id="langSel">
-            <option value="zh-cn">中文</option>
-            <option value="en">英语</option>
-            <option value="ja">日语</option>
-            <option value="ko">韩语</option>
-            <option value="fr">法语</option>
-            <option value="es">西班牙语</option>
+            <option value="zh-cn">中文</option><option value="en">英语</option>
+            <option value="ja">日语</option><option value="ko">韩语</option>
+            <option value="fr">法语</option><option value="es">西班牙语</option>
             <option value="de">德语</option>
           </select>
         </div>
-        <div class="opt-group">
-          <label>语速 · <span class="speed-val" id="speedVal">1.0</span>x</label>
+        <div class="og"><label>语速 · <span class="sv" id="speedVal">1.0</span>x</label>
           <input type="range" id="speedRange" min="0.5" max="2" step="0.1" value="1"
             oninput="document.getElementById('speedVal').textContent=parseFloat(this.value).toFixed(1)">
-          <div class="range-labels"><span>0.5×</span><span>2.0×</span></div>
+          <div class="rl"><span>0.5×</span><span>2.0×</span></div>
         </div>
-        <div class="opt-group">
-          <label>音质模式</label>
+        <div class="og"><label>音质模式</label>
           <select id="latencySel">
             <option value="normal">标准（推荐）</option>
             <option value="balanced">均衡</option>
@@ -436,29 +195,22 @@ input[type=range]::-webkit-slider-thumb{
         </div>
       </div>
     </div>
-
-    <!-- Generate -->
     <button class="btn-gen" id="genBtn" onclick="generate()" disabled>
-      <span id="genIcon">⚡</span>
-      <span id="genLabel">选择声音样本后生成</span>
+      <span id="genIcon">⚡</span><span id="genLabel">选择声音样本后生成</span>
     </button>
-
-    <div class="progress" id="progress">
-      <div class="progress-track"><div class="progress-fill" id="pFill"></div></div>
-      <div class="progress-label" id="pLabel">正在合成...</div>
+    <div class="prog" id="prog">
+      <div class="pt2"><div class="pf" id="pFill"></div></div>
+      <div class="pl" id="pLabel">正在合成...</div>
     </div>
-
     <div class="output" id="output">
       <div class="card" style="margin-top:0">
-        <div class="card-head">合成结果</div>
+        <div class="ch">合成结果</div>
         <div class="player">
-          <button class="play-btn" id="playBtn" onclick="togglePlay()">▶</button>
-          <div class="player-track">
-            <div class="player-title" id="playerTitle">—</div>
-            <div class="prog-wrap" id="progWrap" onclick="seekAudio(event)">
-              <div class="prog-fill" id="progFill"></div>
-            </div>
-            <div class="player-time" id="playerTime">0:00 / 0:00</div>
+          <button class="pb" id="playBtn" onclick="togglePlay()">▶</button>
+          <div class="ptr">
+            <div class="ptit" id="playerTitle">—</div>
+            <div class="pw" id="progWrap" onclick="seekAudio(event)"><div class="pff" id="progFill"></div></div>
+            <div class="ptime" id="playerTime">0:00 / 0:00</div>
           </div>
           <button class="btn-dl" onclick="downloadAudio()">↓ 下载</button>
         </div>
@@ -468,63 +220,37 @@ input[type=range]::-webkit-slider-thumb{
   </main>
 </div>
 
-<!-- ── Add Voice Modal ── -->
-<div class="modal-bg" id="modalBg" onclick="closeModalBg(event)">
+<!-- Modal -->
+<div class="modal-bg" id="modalBg" onclick="closeBg(event)">
   <div class="modal">
-    <div class="modal-title">添加声音样本</div>
-    <div class="modal-sub">上传音频文件或实时录音。<br>建议 15–30 秒清晰人声，效果更佳。</div>
-
-    <div class="field">
-      <label>声音名称</label>
-      <input type="text" id="voiceName" placeholder="例如：主播甲、旁白男声…" maxlength="20">
+    <div class="mt">添加声音样本</div>
+    <div class="ms">上传音频或实时录音。建议 15–30 秒清晰人声，效果更佳。</div>
+    <div class="field"><label>声音名称</label>
+      <input type="text" id="voiceName" placeholder="例如：主播甲、旁白男声…" maxlength="20" oninput="checkSave()">
     </div>
-
-    <!-- noise reduction toggle -->
-    <div class="noise-row">
-      <div>
-        <div class="noise-label">🎙 背景降噪</div>
-        <div class="noise-sub">自动去除背景噪音，提升克隆质量</div>
-      </div>
-      <label class="toggle">
-        <input type="checkbox" id="noiseToggle" checked>
-        <span class="toggle-slider"></span>
-      </label>
+    <div class="nr">
+      <div><div class="nl">🎙 背景降噪</div><div class="ns">自动去除背景噪音，提升克隆质量</div></div>
+      <label class="toggle"><input type="checkbox" id="noiseToggle" checked><span class="ts"></span></label>
     </div>
-
-    <!-- upload zone -->
-    <div class="upload-zone" id="uploadZone">
-      <input type="file" id="fileInput" accept="audio/*" onchange="onFileSelect(event)">
-      <span class="upload-icon">🎵</span>
-      <div class="upload-text">
-        <strong>点击上传</strong> 或拖拽音频文件<br>
-        支持 WAV · MP3 · M4A · FLAC
-      </div>
+    <div class="uz" id="uz">
+      <input type="file" id="fileInput" accept="audio/*" onchange="onFile(event)">
+      <span class="ui">🎵</span>
+      <div class="ut"><strong>点击上传</strong> 或拖拽音频文件<br>支持 WAV · MP3 · M4A · FLAC</div>
     </div>
-
-    <!-- record -->
-    <div class="rec-row">
+    <div class="rr">
       <span style="font-size:10px;color:var(--muted)">— 或 —</span>
       <button class="btn-rec" id="recBtn" onclick="toggleRec()">
-        <span class="rec-dot"></span>
-        <span id="recLabel">实时录音</span>
+        <span class="rdd"></span><span id="recLabel">实时录音</span>
       </button>
     </div>
-
-    <!-- preview -->
-    <div class="preview-strip" id="previewStrip" style="position:relative">
-      <div class="preview-wave">
-        <span></span><span></span><span></span><span></span><span></span>
-      </div>
-      <span class="preview-name" id="previewName">—</span>
-      <span class="preview-size" id="previewSize">—</span>
-      <button class="preview-del" onclick="clearAudio()">✕</button>
-      <div class="noise-overlay" id="noiseOverlay">
-        <div class="noise-spinner"></div>
-        <span>降噪处理中…</span>
-      </div>
+    <div class="ps2" id="prevStrip" style="position:relative">
+      <div class="pw2"><span></span><span></span><span></span><span></span><span></span></div>
+      <span class="pn" id="prevName">—</span>
+      <span class="pz" id="prevSize">—</span>
+      <button class="pdel" onclick="clearAudio()">✕</button>
+      <div class="no" id="noiseOv"><div class="nsp"></div><span>降噪处理中…</span></div>
     </div>
-
-    <div class="modal-btns">
+    <div class="mb">
       <button class="btn-cancel" onclick="closeModal()">取消</button>
       <button class="btn-save" id="saveBtn" onclick="saveVoice()" disabled>保存声音</button>
     </div>
@@ -534,507 +260,425 @@ input[type=range]::-webkit-slider-thumb{
 <div class="toast" id="toast"></div>
 
 <script>
-// ══════════════════════════════════════════
-//  STATE
-// ══════════════════════════════════════════
-const DB_KEY   = 'voiceforge_voices';
-const API_KEY  = 'voiceforge_apikey';
-const API_BASE = 'https://api.fish.audio';
+// ══════════════════════════════════════════════════════
+// IndexedDB — 替换 localStorage，无大小限制
+// ══════════════════════════════════════════════════════
+const IDB = {
+  db: null,
+  async open() {
+    if (this.db) return this.db;
+    return new Promise((res, rej) => {
+      const req = indexedDB.open('voiceforge', 2);
+      req.onupgradeneeded = e => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('voices'))
+          db.createObjectStore('voices', { keyPath: 'id' });
+      };
+      req.onsuccess = e => { this.db = e.target.result; res(this.db); };
+      req.onerror  = e => rej(e);
+    });
+  },
+  async getAll() {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const tx  = db.transaction('voices', 'readonly');
+      const req = tx.objectStore('voices').getAll();
+      req.onsuccess = () => res(req.result || []);
+      req.onerror   = e => rej(e);
+    });
+  },
+  async put(obj) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const tx  = db.transaction('voices', 'readwrite');
+      const req = tx.objectStore('voices').put(obj);
+      req.onsuccess = () => res();
+      req.onerror   = e => rej(e);
+    });
+  },
+  async del(id) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const tx  = db.transaction('voices', 'readwrite');
+      const req = tx.objectStore('voices').delete(id);
+      req.onsuccess = () => res();
+      req.onerror   = e => rej(e);
+    });
+  }
+};
 
-let voices      = [];   // [{id, name, audioB64, mime, size, created}]
-let activeVoice = null; // id
-let pendingBlob = null; // File/Blob being added
+// ══════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════
+const API_KEY_LS = 'voiceforge_apikey';
+const API_BASE   = 'https://api.fish.audio';
+
+let voices      = [];   // [{id, name, audioBuf(ArrayBuffer), mime, size, created}]
+let activeVoice = null;
+let pendingBlob = null;
 let mediaRec    = null;
 let recChunks   = [];
 let isRecording = false;
 let currentAudioURL = null;
 
-// ══════════════════════════════════════════
-//  INIT
-// ══════════════════════════════════════════
-function init() {
-  // restore API key
-  const k = localStorage.getItem(API_KEY) || '';
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+async function init() {
+  const k = localStorage.getItem(API_KEY_LS) || '';
   document.getElementById('apiKey').value = k;
   if (k) validateKeyUI(k);
 
-  // restore voices
-  try { voices = JSON.parse(localStorage.getItem(DB_KEY) || '[]'); } catch { voices = []; }
+  voices = await IDB.getAll();
+  // sort by created desc
+  voices.sort((a,b) => (b.createdTs||0)-(a.createdTs||0));
   renderVoices();
 
-  // text counter
   document.getElementById('textInput').addEventListener('input', () => {
     document.getElementById('charCount').textContent =
       document.getElementById('textInput').value.length;
     checkReady();
   });
 
-  // upload zone drag
-  const uz = document.getElementById('uploadZone');
+  const uz = document.getElementById('uz');
   uz.addEventListener('dragover',  e => { e.preventDefault(); uz.classList.add('drag'); });
   uz.addEventListener('dragleave', () => uz.classList.remove('drag'));
   uz.addEventListener('drop', e => {
     e.preventDefault(); uz.classList.remove('drag');
-    const f = e.dataTransfer.files[0];
-    if (f) handleFile(f);
+    const f = e.dataTransfer.files[0]; if (f) handleFile(f);
   });
 }
 
-// ══════════════════════════════════════════
-//  API KEY
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// API KEY
+// ══════════════════════════════════════════════════════
 function onKeyInput() {
   const k = document.getElementById('apiKey').value.trim();
-  localStorage.setItem(API_KEY, k);
-  validateKeyUI(k);
-  checkReady();
+  localStorage.setItem(API_KEY_LS, k);
+  validateKeyUI(k); checkReady();
 }
 function validateKeyUI(k) {
-  const el = document.getElementById('keyStatus');
-  if (!k)          { el.textContent=''; el.className='key-status'; return; }
-  if (k.length>=20){ el.textContent='✓ 已保存'; el.className='key-status ok'; }
-  else             { el.textContent='格式可能有误'; el.className='key-status err'; }
+  const el = document.getElementById('keySt');
+  if (!k)         { el.textContent=''; el.className='key-st'; return; }
+  if (k.length>=20){ el.textContent='✓ 已保存'; el.className='key-st ok'; }
+  else             { el.textContent='格式可能有误'; el.className='key-st err'; }
 }
 function toggleKey() {
   const el = document.getElementById('apiKey');
-  el.type = el.type === 'password' ? 'text' : 'password';
+  el.type = el.type==='password' ? 'text' : 'password';
 }
 
-// ══════════════════════════════════════════
-//  VOICE LIBRARY
-// ══════════════════════════════════════════
-function saveVoices() {
-  localStorage.setItem(DB_KEY, JSON.stringify(voices));
-}
-
+// ══════════════════════════════════════════════════════
+// VOICE LIBRARY
+// ══════════════════════════════════════════════════════
 function renderVoices() {
   const list = document.getElementById('voiceList');
   if (!voices.length) {
-    list.innerHTML = '<div class="empty-voices">暂无声音样本<br>点击下方按钮添加</div>';
-    activeVoice = null; checkReady(); return;
+    list.innerHTML='<div class="ev">暂无声音样本<br>点击下方按钮添加</div>';
+    activeVoice=null; checkReady(); return;
   }
-  list.innerHTML = voices.map(v => `
+  list.innerHTML = voices.map(v=>`
     <div class="voice-item${v.id===activeVoice?' active':''}" onclick="selectVoice('${v.id}')">
-      <div class="voice-avatar">${v.name.charAt(0)}</div>
-      <div class="voice-info">
-        <div class="voice-name">${escHtml(v.name)}</div>
-        <div class="voice-meta">${v.size} · ${v.created}</div>
+      <div class="va">${v.name.charAt(0)}</div>
+      <div class="vi">
+        <div class="vn">${esc(v.name)}</div>
+        <div class="vm">${v.size} · ${v.created}</div>
       </div>
-      <button class="voice-del" onclick="deleteVoice(event,'${v.id}')" title="删除">✕</button>
+      <button class="vd" onclick="delVoice(event,'${v.id}')" title="删除">✕</button>
     </div>
   `).join('');
   checkReady();
 }
-
-function selectVoice(id) {
-  activeVoice = id;
-  renderVoices();
-  checkReady();
-}
-
-function deleteVoice(e, id) {
+function selectVoice(id) { activeVoice=id; renderVoices(); checkReady(); }
+async function delVoice(e, id) {
   e.stopPropagation();
-  voices = voices.filter(v => v.id !== id);
-  if (activeVoice === id) activeVoice = voices[0]?.id || null;
-  saveVoices(); renderVoices();
-  toast('声音样本已删除');
+  await IDB.del(id);
+  voices = voices.filter(v=>v.id!==id);
+  if (activeVoice===id) activeVoice = voices[0]?.id||null;
+  renderVoices(); toast('声音样本已删除');
 }
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-// ══════════════════════════════════════════
-//  ADD VOICE MODAL
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// MODAL
+// ══════════════════════════════════════════════════════
 function openModal() {
-  pendingBlob = null;
-  document.getElementById('voiceName').value = '';
-  document.getElementById('saveBtn').disabled = true;
-  document.getElementById('previewStrip').classList.remove('show');
+  pendingBlob=null;
+  document.getElementById('voiceName').value='';
+  document.getElementById('saveBtn').disabled=true;
+  document.getElementById('prevStrip').classList.remove('show');
   document.getElementById('recBtn').classList.remove('rec');
-  document.getElementById('recLabel').textContent = '实时录音';
+  document.getElementById('recLabel').textContent='实时录音';
   if (isRecording) stopRec();
   document.getElementById('modalBg').classList.add('show');
 }
 function closeModal() {
   document.getElementById('modalBg').classList.remove('show');
   if (isRecording) stopRec();
-  pendingBlob = null;
+  pendingBlob=null;
 }
-function closeModalBg(e) {
-  if (e.target === document.getElementById('modalBg')) closeModal();
-}
+function closeBg(e) { if (e.target===document.getElementById('modalBg')) closeModal(); }
 
-// ── file upload ──
-function onFileSelect(e) {
-  const f = e.target.files[0];
-  if (f) handleFile(f);
-  e.target.value = '';
-}
-
+// ── file ──
+function onFile(e) { const f=e.target.files[0]; if(f) handleFile(f); e.target.value=''; }
 async function handleFile(file) {
   const denoise = document.getElementById('noiseToggle').checked;
-  if (denoise) {
-    showNoiseOverlay(true);
-    try {
-      pendingBlob = await denoiseAudio(file);
-    } catch {
-      pendingBlob = file; // fallback to original
+  document.getElementById('noiseOv').classList.add('show');
+  document.getElementById('prevStrip').classList.add('show');
+  try {
+    if (denoise) {
+      try { pendingBlob = await denoiseAudio(file); }
+      catch { pendingBlob = file; }
+    } else {
+      pendingBlob = file;
     }
-    showNoiseOverlay(false);
-  } else {
-    pendingBlob = file;
+  } finally {
+    document.getElementById('noiseOv').classList.remove('show');
   }
-  showPreview(pendingBlob.name || file.name, pendingBlob.size);
+  showPreview(file.name, pendingBlob.size || file.size);
 }
-
-function showNoiseOverlay(show) {
-  document.getElementById('noiseOverlay').classList.toggle('show', show);
-  document.getElementById('previewStrip').classList.add('show');
-}
-
 function showPreview(name, size) {
-  document.getElementById('previewName').textContent = name;
-  document.getElementById('previewSize').textContent = fmtSize(size);
-  document.getElementById('previewStrip').classList.add('show');
-  checkSaveReady();
+  document.getElementById('prevName').textContent = name;
+  document.getElementById('prevSize').textContent = fmtSz(size);
+  document.getElementById('prevStrip').classList.add('show');
+  checkSave();
 }
-
 function clearAudio() {
-  pendingBlob = null;
-  document.getElementById('previewStrip').classList.remove('show');
-  checkSaveReady();
+  pendingBlob=null;
+  document.getElementById('prevStrip').classList.remove('show');
+  checkSave();
+}
+function checkSave() {
+  const ok = !!pendingBlob && document.getElementById('voiceName').value.trim().length>0;
+  document.getElementById('saveBtn').disabled=!ok;
 }
 
-function checkSaveReady() {
-  const ok = !!pendingBlob && document.getElementById('voiceName').value.trim().length > 0;
-  document.getElementById('saveBtn').disabled = !ok;
-}
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('voiceName').addEventListener('input', checkSaveReady);
-});
-
-// ── save voice ──
+// ── save ──
 async function saveVoice() {
   const name = document.getElementById('voiceName').value.trim();
-  if (!name || !pendingBlob) return;
-
-  const b64 = await blobToB64(pendingBlob);
-  const id  = 'v_' + Date.now();
-  voices.push({
+  if (!name||!pendingBlob) return;
+  const ab  = await pendingBlob.arrayBuffer();
+  const id  = 'v_'+Date.now();
+  const obj = {
     id, name,
-    audioB64: b64,
-    mime: pendingBlob.type || 'audio/wav',
-    size: fmtSize(pendingBlob.size),
+    audioBuf: ab,
+    mime: pendingBlob.type||'audio/wav',
+    size: fmtSz(pendingBlob.size),
     created: new Date().toLocaleDateString('zh-CN'),
-  });
-  activeVoice = id;
-  saveVoices(); renderVoices();
-  closeModal();
-  toast('✓ 声音样本已保存', 'ok');
+    createdTs: Date.now(),
+  };
+  await IDB.put(obj);
+  voices.unshift(obj);
+  activeVoice=id;
+  renderVoices(); closeModal();
+  toast('✓ 声音样本已保存','ok');
 }
 
-// ══════════════════════════════════════════
-//  RECORDING
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// RECORDING
+// ══════════════════════════════════════════════════════
 async function toggleRec() {
   if (!isRecording) {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      recChunks = [];
-      mediaRec  = new MediaRecorder(stream);
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      recChunks=[]; mediaRec=new MediaRecorder(stream);
       mediaRec.ondataavailable = e => recChunks.push(e.data);
       mediaRec.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(recChunks, { type: 'audio/webm' });
-        await handleFile(new File([blob], '录音.webm', { type: 'audio/webm' }));
+        stream.getTracks().forEach(t=>t.stop());
+        const blob = new Blob(recChunks,{type:'audio/webm'});
+        await handleFile(new File([blob],'录音.webm',{type:'audio/webm'}));
       };
-      mediaRec.start();
-      isRecording = true;
+      mediaRec.start(); isRecording=true;
       document.getElementById('recBtn').classList.add('rec');
-      document.getElementById('recLabel').textContent = '停止录音';
-    } catch { toast('⚠ 无法访问麦克风', 'err'); }
+      document.getElementById('recLabel').textContent='停止录音';
+    } catch { toast('⚠ 无法访问麦克风','err'); }
   } else { stopRec(); }
 }
-
 function stopRec() {
-  mediaRec?.stop();
-  isRecording = false;
+  mediaRec?.stop(); isRecording=false;
   document.getElementById('recBtn').classList.remove('rec');
-  document.getElementById('recLabel').textContent = '实时录音';
+  document.getElementById('recLabel').textContent='实时录音';
 }
 
-// ══════════════════════════════════════════
-//  NOISE REDUCTION (Web Audio API)
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// NOISE REDUCTION (Web Audio API)
+// ══════════════════════════════════════════════════════
 async function denoiseAudio(file) {
-  /**
-   * 浏览器端轻量降噪：
-   * 使用 Web Audio API 的 DynamicsCompressorNode + 高通滤波器
-   * 去除低频隆隆声和轻微背景噪音。
-   * 注意：这是轻量级处理，不如专业降噪软件，但对大多数场景有效。
-   */
-  const ctx   = new (window.AudioContext || window.webkitAudioContext)();
+  const ctx    = new (window.AudioContext||window.webkitAudioContext)();
   const arrBuf = await file.arrayBuffer();
   const audioBuf = await ctx.decodeAudioData(arrBuf);
-
   const offCtx = new OfflineAudioContext(
-    audioBuf.numberOfChannels,
-    audioBuf.length,
-    audioBuf.sampleRate
+    audioBuf.numberOfChannels, audioBuf.length, audioBuf.sampleRate
   );
-
-  const src = offCtx.createBufferSource();
-  src.buffer = audioBuf;
-
-  // 高通滤波：去除 80Hz 以下的低频噪声（空调、风声等）
-  const hpf = offCtx.createBiquadFilter();
-  hpf.type      = 'highpass';
-  hpf.frequency.value = 80;
-
-  // 动态压缩：减少音量突变、压制背景噪音
+  const src  = offCtx.createBufferSource(); src.buffer=audioBuf;
+  const hpf  = offCtx.createBiquadFilter();
+  hpf.type='highpass'; hpf.frequency.value=80;
   const comp = offCtx.createDynamicsCompressor();
-  comp.threshold.value = -40;
-  comp.knee.value      = 10;
-  comp.ratio.value     = 4;
-  comp.attack.value    = 0.003;
-  comp.release.value   = 0.1;
-
-  // 增益：补偿压缩后的音量损失
-  const gain = offCtx.createGain();
-  gain.gain.value = 1.3;
-
-  src.connect(hpf);
-  hpf.connect(comp);
-  comp.connect(gain);
-  gain.connect(offCtx.destination);
+  comp.threshold.value=-40; comp.knee.value=10;
+  comp.ratio.value=4; comp.attack.value=0.003; comp.release.value=0.1;
+  const gain = offCtx.createGain(); gain.gain.value=1.3;
+  src.connect(hpf); hpf.connect(comp); comp.connect(gain); gain.connect(offCtx.destination);
   src.start(0);
-
   const rendered = await offCtx.startRendering();
   await ctx.close();
-
-  // 转成 WAV Blob
-  return audioBufferToWavBlob(rendered);
+  return audioBufferToWav(rendered);
+}
+function audioBufferToWav(buf) {
+  const nc=buf.numberOfChannels,sr=buf.sampleRate,len=buf.length;
+  const ab=new ArrayBuffer(44+len*nc*2); const v=new DataView(ab);
+  const ws=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+  ws(0,'RIFF'); v.setUint32(4,36+len*nc*2,true); ws(8,'WAVE'); ws(12,'fmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,nc,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*nc*2,true);
+  v.setUint16(32,nc*2,true); v.setUint16(34,16,true); ws(36,'data');
+  v.setUint32(40,len*nc*2,true);
+  let off=44;
+  for(let i=0;i<len;i++) for(let c=0;c<nc;c++){
+    v.setInt16(off,Math.max(-1,Math.min(1,buf.getChannelData(c)[i]))*0x7FFF|0,true); off+=2;
+  }
+  return new Blob([ab],{type:'audio/wav'});
 }
 
-function audioBufferToWavBlob(buffer) {
-  const numCh   = buffer.numberOfChannels;
-  const sr      = buffer.sampleRate;
-  const len     = buffer.length;
-  const arrBuf  = new ArrayBuffer(44 + len * numCh * 2);
-  const view    = new DataView(arrBuf);
-
-  function writeStr(off, str) {
-    for (let i=0;i<str.length;i++) view.setUint8(off+i, str.charCodeAt(i));
-  }
-  function floatTo16(f) { return Math.max(-1,Math.min(1,f)) * 0x7FFF | 0; }
-
-  writeStr(0, 'RIFF');
-  view.setUint32(4, 36 + len*numCh*2, true);
-  writeStr(8, 'WAVE');
-  writeStr(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, numCh, true);
-  view.setUint32(24, sr, true);
-  view.setUint32(28, sr * numCh * 2, true);
-  view.setUint16(32, numCh * 2, true);
-  view.setUint16(34, 16, true);
-  writeStr(36, 'data');
-  view.setUint32(40, len * numCh * 2, true);
-
-  let off = 44;
-  for (let i=0; i<len; i++) {
-    for (let ch=0; ch<numCh; ch++) {
-      view.setInt16(off, floatTo16(buffer.getChannelData(ch)[i]), true);
-      off += 2;
-    }
-  }
-  return new Blob([arrBuf], { type: 'audio/wav' });
-}
-
-// ══════════════════════════════════════════
-//  GENERATE
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// GENERATE — Fish Audio API with msgpack
+// ══════════════════════════════════════════════════════
 function checkReady() {
-  const key  = document.getElementById('apiKey').value.trim();
-  const text = document.getElementById('textInput').value.trim();
-  const ok   = key.length >= 20 && text.length > 0 && !!activeVoice;
-  const btn  = document.getElementById('genBtn');
-  btn.disabled = !ok;
-  document.getElementById('genLabel').textContent =
-    !key.length    ? '请先填写 API Key' :
-    !activeVoice   ? '请先选择声音样本' :
-    !text.length   ? '请输入文字内容'   : '生成语音';
+  const key=document.getElementById('apiKey').value.trim();
+  const txt=document.getElementById('textInput').value.trim();
+  const ok=key.length>=20 && txt.length>0 && !!activeVoice;
+  document.getElementById('genBtn').disabled=!ok;
+  document.getElementById('genLabel').textContent=
+    !key.length   ? '请先填写 API Key':
+    !activeVoice  ? '请先选择声音样本':
+    !txt.length   ? '请输入文字内容':'生成语音';
 }
 
 async function generate() {
-  const key  = document.getElementById('apiKey').value.trim();
-  const text = document.getElementById('textInput').value.trim();
-  const lang = document.getElementById('langSel').value;
-  const spd  = parseFloat(document.getElementById('speedRange').value);
+  const key     = document.getElementById('apiKey').value.trim();
+  const text    = document.getElementById('textInput').value.trim();
+  const spd     = parseFloat(document.getElementById('speedRange').value);
   const latency = document.getElementById('latencySel').value;
-  const voice = voices.find(v => v.id === activeVoice);
+  const voice   = voices.find(v=>v.id===activeVoice);
   if (!voice) return;
 
-  // UI: loading
   const btn = document.getElementById('genBtn');
-  btn.disabled = true;
-  btn.querySelector('#genIcon').textContent = '⏳';
-  btn.querySelector('#genLabel').textContent = '合成中…';
-  document.getElementById('progress').classList.add('show');
+  btn.disabled=true;
+  document.getElementById('genIcon').textContent='⏳';
+  document.getElementById('genLabel').textContent='合成中…';
+  document.getElementById('prog').classList.add('show');
   document.getElementById('output').classList.remove('show');
 
-  const steps = [
-    [15, '准备声音样本…'],
-    [40, '调用 Fish Audio API…'],
-    [70, '生成音频波形…'],
-    [90, '后处理中…'],
-  ];
-  let si = 0;
-  const iv = setInterval(() => {
-    if (si < steps.length) {
-      document.getElementById('pFill').style.width  = steps[si][0] + '%';
-      document.getElementById('pLabel').textContent = steps[si][1];
+  const steps=[[15,'准备声音样本…'],[40,'序列化请求数据…'],[65,'调用 Fish Audio API…'],[88,'处理返回音频…']];
+  let si=0;
+  const iv=setInterval(()=>{
+    if(si<steps.length){
+      document.getElementById('pFill').style.width=steps[si][0]+'%';
+      document.getElementById('pLabel').textContent=steps[si][1];
       si++;
     }
-  }, 1000);
+  },900);
 
   try {
-    // decode base64 audio → Uint8Array
-    const audioBytes = b64ToUint8(voice.audioB64);
+    // Fish Audio API 要求 msgpack 序列化才能传 reference audio bytes
+    // 参考: https://docs.fish.audio/developer-guide/core-features/text-to-speech#direct-api-usage
+    const audioBytes = new Uint8Array(voice.audioBuf);
 
-    // build multipart/form-data manually (Fish Audio REST API)
-    const formData = new FormData();
-
-    // TTS request JSON part
-    const reqJson = JSON.stringify({
+    const payload = {
       text,
-      references: [],   // audio sent as separate part
+      references: [{ audio: audioBytes, text: '' }],
       format: 'wav',
       latency,
-      ...(spd !== 1.0 ? { prosody: { speed: spd } } : {}),
-    });
-    formData.append('message', new Blob([reqJson], { type: 'application/json' }));
+      prosody: { speed: spd, volume: 0, normalize_loudness: true },
+    };
 
-    // Reference audio part
-    const audioBlob = new Blob([audioBytes], { type: voice.mime || 'audio/wav' });
-    formData.append('references', audioBlob, 'ref.wav');
-    // reference text (empty — Fish Audio can infer)
-    formData.append('references_text', '');
+    const packed = msgpack.encode(payload);
 
     const resp = await fetch(`${API_BASE}/v1/tts`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${key}` },
-      body: formData,
+      headers: {
+        'Authorization': `Bearer ${key}`,
+        'Content-Type':  'application/msgpack',
+        'model':         's2-pro',
+      },
+      body: packed,
     });
 
     clearInterval(iv);
 
     if (!resp.ok) {
-      const errText = await resp.text();
       let msg = `HTTP ${resp.status}`;
-      try { msg = JSON.parse(errText).message || msg; } catch {}
-      if (resp.status === 402) msg = '余额不足，请前往 fish.audio 充值';
-      if (resp.status === 401) msg = 'API Key 无效，请检查';
+      try { const j=await resp.json(); msg=j.message||msg; } catch {}
+      if (resp.status===402) msg='余额不足，请前往 fish.audio 充值';
+      if (resp.status===401) msg='API Key 无效，请检查';
       throw new Error(msg);
     }
 
     const audioData = await resp.arrayBuffer();
-    document.getElementById('pFill').style.width  = '100%';
-    document.getElementById('pLabel').textContent = '✓ 合成完成！';
+    document.getElementById('pFill').style.width='100%';
+    document.getElementById('pLabel').textContent='✓ 合成完成！';
 
-    // setup player
-    const url = URL.createObjectURL(new Blob([audioData], { type: 'audio/wav' }));
+    const url = URL.createObjectURL(new Blob([audioData],{type:'audio/wav'}));
     currentAudioURL = url;
     setupPlayer(url, voice.name);
 
-    setTimeout(() => {
-      document.getElementById('progress').classList.remove('show');
+    setTimeout(()=>{
+      document.getElementById('prog').classList.remove('show');
       document.getElementById('output').classList.add('show');
-      document.getElementById('output').scrollIntoView({ behavior: 'smooth' });
-      toast('✓ 声音生成成功！', 'ok');
-    }, 400);
+      document.getElementById('output').scrollIntoView({behavior:'smooth'});
+      toast('✓ 声音生成成功！','ok');
+    },400);
 
-  } catch (err) {
+  } catch(err) {
     clearInterval(iv);
-    document.getElementById('progress').classList.remove('show');
-    toast('✕ ' + err.message, 'err');
+    document.getElementById('prog').classList.remove('show');
+    toast('✕ '+err.message,'err');
   } finally {
-    btn.disabled = false;
-    btn.querySelector('#genIcon').textContent = '⚡';
-    btn.querySelector('#genLabel').textContent = '生成语音';
+    btn.disabled=false;
+    document.getElementById('genIcon').textContent='⚡';
     checkReady();
   }
 }
 
-// ══════════════════════════════════════════
-//  PLAYER
-// ══════════════════════════════════════════
-function setupPlayer(url, name) {
-  const audio = document.getElementById('audioEl');
-  audio.src   = url;
-  document.getElementById('playerTitle').textContent = name + ' · 合成完成';
-
-  audio.ontimeupdate = () => {
-    const pct = audio.duration ? audio.currentTime/audio.duration*100 : 0;
-    document.getElementById('progFill').style.width = pct + '%';
-    document.getElementById('playerTime').textContent =
-      fmt(audio.currentTime) + ' / ' + fmt(audio.duration||0);
+// ══════════════════════════════════════════════════════
+// PLAYER
+// ══════════════════════════════════════════════════════
+function setupPlayer(url,name) {
+  const a=document.getElementById('audioEl'); a.src=url;
+  document.getElementById('playerTitle').textContent=name+' · 合成完成';
+  a.ontimeupdate=()=>{
+    const p=a.duration?a.currentTime/a.duration*100:0;
+    document.getElementById('progFill').style.width=p+'%';
+    document.getElementById('playerTime').textContent=fmt(a.currentTime)+' / '+fmt(a.duration||0);
   };
-  audio.onended = () => {
-    document.getElementById('playBtn').textContent = '▶';
-  };
+  a.onended=()=>{ document.getElementById('playBtn').textContent='▶'; };
 }
-function togglePlay() {
-  const a = document.getElementById('audioEl');
-  const b = document.getElementById('playBtn');
-  if (a.paused) { a.play(); b.textContent = '⏸'; }
-  else          { a.pause(); b.textContent = '▶'; }
+function togglePlay(){
+  const a=document.getElementById('audioEl'),b=document.getElementById('playBtn');
+  if(a.paused){a.play();b.textContent='⏸';}else{a.pause();b.textContent='▶';}
 }
-function seekAudio(e) {
-  const a = document.getElementById('audioEl');
-  const r = document.getElementById('progWrap').getBoundingClientRect();
-  a.currentTime = ((e.clientX - r.left) / r.width) * (a.duration || 0);
+function seekAudio(e){
+  const a=document.getElementById('audioEl');
+  const r=document.getElementById('progWrap').getBoundingClientRect();
+  a.currentTime=((e.clientX-r.left)/r.width)*(a.duration||0);
 }
-function downloadAudio() {
-  if (!currentAudioURL) return;
-  const a = document.createElement('a');
-  a.href = currentAudioURL;
-  a.download = 'voiceforge_' + Date.now() + '.wav';
-  a.click();
+function downloadAudio(){
+  if(!currentAudioURL)return;
+  const a=document.createElement('a'); a.href=currentAudioURL;
+  a.download='voiceforge_'+Date.now()+'.wav'; a.click();
 }
-function fmt(s) {
-  if (!s || isNaN(s)) return '0:00';
-  return Math.floor(s/60) + ':' + String(Math.floor(s%60)).padStart(2,'0');
+function fmt(s){
+  if(!s||isNaN(s))return'0:00';
+  return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
 }
 
-// ══════════════════════════════════════════
-//  UTILS
-// ══════════════════════════════════════════
-function fmtSize(b) {
-  return b > 1024*1024 ? (b/1024/1024).toFixed(1)+'MB' : Math.round(b/1024)+'KB';
-}
-function blobToB64(blob) {
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload  = () => res(r.result.split(',')[1]);
-    r.onerror = rej;
-    r.readAsDataURL(blob);
-  });
-}
-function b64ToUint8(b64) {
-  const bin = atob(b64);
-  const arr = new Uint8Array(bin.length);
-  for (let i=0; i<bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return arr;
-}
-function toast(msg, type='') {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className   = `toast${type?' '+type:''} show`;
-  setTimeout(() => t.className = `toast${type?' '+type:''}`, 3000);
+// ══════════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════════
+function fmtSz(b){ return b>1024*1024?(b/1024/1024).toFixed(1)+'MB':Math.round(b/1024)+'KB'; }
+function toast(msg,type=''){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className=`toast${type?' '+type:''} show`;
+  setTimeout(()=>t.className=`toast${type?' '+type:''}`,3000);
 }
 
 init();
