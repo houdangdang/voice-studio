@@ -156,6 +156,15 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
       <button class="key-eye" onclick="toggleKey()">👁</button>
     </div>
     <div class="key-st" id="keySt"></div>
+    <div class="sec">代理地址 (Cloudflare Worker)</div>
+    <input class="key-input" type="text" id="proxyUrl"
+      placeholder="https://xxx.workers.dev"
+      oninput="onProxyInput()"
+      style="margin-bottom:5px">
+    <div class="key-st" id="proxySt"></div>
+    <div style="font-size:9px;color:#555;line-height:1.7;margin-top:4px">
+      部署 worker.js 到 Cloudflare Workers<br>后填入此处，解决跨域限制
+    </div>
     <div class="sec">声音样本库</div>
     <div class="voice-list" id="voiceList"></div>
     <button class="voice-add" onclick="openModal()">+ 添加声音样本</button>
@@ -310,8 +319,13 @@ const IDB = {
 // ══════════════════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════════════════
-const API_KEY_LS = 'voiceforge_apikey';
-const API_BASE   = 'https://api.fish.audio';
+const API_KEY_LS   = 'voiceforge_apikey';
+const PROXY_URL_LS = 'voiceforge_proxy';
+// API_BASE resolved at call time from proxy input (falls back to direct)
+function getApiBase() {
+  const p = (localStorage.getItem(PROXY_URL_LS)||'').trim().replace(/\/+$/,'');
+  return p || 'https://api.fish.audio';
+}
 
 let voices      = [];   // [{id, name, audioBuf(ArrayBuffer), mime, size, created}]
 let activeVoice = null;
@@ -328,6 +342,10 @@ async function init() {
   const k = localStorage.getItem(API_KEY_LS) || '';
   document.getElementById('apiKey').value = k;
   if (k) validateKeyUI(k);
+
+  const p = localStorage.getItem(PROXY_URL_LS) || '';
+  document.getElementById('proxyUrl').value = p;
+  if (p) validateProxyUI(p);
 
   voices = await IDB.getAll();
   // sort by created desc
@@ -366,6 +384,17 @@ function validateKeyUI(k) {
 function toggleKey() {
   const el = document.getElementById('apiKey');
   el.type = el.type==='password' ? 'text' : 'password';
+}
+function onProxyInput() {
+  const p = document.getElementById('proxyUrl').value.trim();
+  localStorage.setItem(PROXY_URL_LS, p);
+  validateProxyUI(p); checkReady();
+}
+function validateProxyUI(p) {
+  const el = document.getElementById('proxySt');
+  if (!p)                          { el.textContent='未设置，需部署代理才能使用'; el.className='key-st err'; return; }
+  if (p.startsWith('https://'))    { el.textContent='✓ 代理已配置'; el.className='key-st ok'; }
+  else                             { el.textContent='请填入完整 https:// 地址'; el.className='key-st err'; }
 }
 
 // ══════════════════════════════════════════════════════
@@ -593,7 +622,7 @@ async function generate() {
 
     const packed = msgpack.encode(payload);
 
-    const resp = await fetch(`${API_BASE}/v1/tts`, {
+    const resp = await fetch(`${getApiBase()}/v1/tts`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${key}`,
