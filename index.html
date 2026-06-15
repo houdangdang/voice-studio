@@ -193,7 +193,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
     <div class="card">
       <div class="ch">输入文字</div>
       <textarea id="textInput" maxlength="2000" placeholder="输入要克隆朗读的文字内容...&#10;&#10;示例：大家好，这是我的声音克隆测试。"></textarea>
-      <div class="mr"><span class="cc"><span id="charCount">0</span> / 2000</span></div>
+      <div class="mr">
+        <span class="cc"><span id="charCount">0</span> / 2000</span>
+        <span style="font-size:10px;color:var(--muted)">停顿语法：<code style="background:var(--warm);padding:1px 5px;border-radius:3px;color:var(--accent)">[3s]</code> 插入指定秒数静音</span>
+      </div>
     </div>
     <div class="card">
       <div class="ch">合成参数</div>
@@ -826,9 +829,79 @@ function checkReady() {
     !txt.length   ? '请输入文字内容':'生成语音';
 }
 
+// ══════════════════════════════════════════════════════
+// 停顿处理：解析 [Xs] / [Xms] 标记，拆分文本段
+// ══════════════════════════════════════════════════════
+
+/**
+ * 把文本按 [Xs] 或 [Xms] 分割成段落数组
+ * 返回: [{type:'text', content:'...'} | {type:'silence', ms: 3000}]
+ * 示例: "你好[3s]世界" → [{text,'你好'},{silence,3000},{text,'世界'}]
+ */
+function parsePauseSegments(raw) {
+  // 匹配 [数字s] 或 [数字ms]，大小写不敏感
+  const re = /\[(\d+(?:\.\d+)?)(ms|s)\]/gi;
+  const segments = [];
+  let last = 0, m;
+  while ((m = re.exec(raw)) !== null) {
+    const before = raw.slice(last, m.index).trim();
+    if (before) segments.push({ type: 'text', content: before });
+    const val = parseFloat(m[1]);
+    const ms  = m[2].toLowerCase() === 's' ? Math.round(val * 1000) : Math.round(val);
+    segments.push({ type: 'silence', ms: Math.max(50, Math.min(ms, 30000)) });
+    last = m.index + m[0].length;
+  }
+  const tail = raw.slice(last).trim();
+  if (tail) segments.push({ type: 'text', content: tail });
+  return segments.length ? segments : [{ type: 'text', content: raw }];
+}
+
+/** 生成 N 毫秒的 WAV 静音 ArrayBuffer（PCM 16-bit, 44100Hz, 单声道） */
+function makeSilenceWav(ms, sampleRate=44100) {
+  const numSamples = Math.ceil(sampleRate * ms / 1000);
+  const buf = new ArrayBuffer(44 + numSamples * 2);
+  const v   = new DataView(buf);
+  const ws  = (o,s) => { for(let i=0;i<s.length;i++) v.setUint8(o+i,s.charCodeAt(i)); };
+  ws(0,'RIFF'); v.setUint32(4, 36+numSamples*2, true); ws(8,'WAVE');
+  ws(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true);
+  v.setUint16(22,1,true); v.setUint32(24,sampleRate,true);
+  v.setUint32(28,sampleRate*2,true); v.setUint16(32,2,true);
+  v.setUint16(34,16,true); ws(36,'data'); v.setUint32(40,numSamples*2,true);
+  // PCM data is already zeros (silence)
+  return buf;
+}
+
+/**
+ * 把多个 WAV ArrayBuffer 拼接成一个 WAV
+ * 要求所有输入同为 44100Hz/16bit，否则各自直接拼接 PCM 数据
+ */
+function concatWavBuffers(buffers) {
+  // 读取每个 WAV 的 PCM 数据（跳过 44 字节 header）
+  const pcmList = buffers.map(ab => new Uint8Array(ab, 44));
+  const totalPcm = pcmList.reduce((s,p) => s + p.byteLength, 0);
+
+  // 用第一个 buffer 的 header 作模板
+  const header = new Uint8Array(buffers[0], 0, 44);
+  const out    = new ArrayBuffer(44 + totalPcm);
+  const outU8  = new Uint8Array(out);
+  outU8.set(header, 0);
+
+  // 修正 RIFF 总大小 和 data chunk 大小
+  const dv = new DataView(out);
+  dv.setUint32(4,  36 + totalPcm, true);
+  dv.setUint32(40, totalPcm,      true);
+
+  let offset = 44;
+  for (const pcm of pcmList) {
+    outU8.set(pcm, offset);
+    offset += pcm.byteLength;
+  }
+  return out;
+}
+
 async function generate() {
   const key     = document.getElementById('apiKey').value.trim();
-  const text    = document.getElementById('textInput').value.trim();
+  const rawText = document.getElementById('textInput').value.trim();
   const lang    = document.getElementById('langSel').value;
   const spd     = parseFloat(document.getElementById('speedRange').value);
   const latency = document.getElementById('latencySel').value;
@@ -847,57 +920,87 @@ async function generate() {
   document.getElementById('prog').classList.add('show');
   document.getElementById('output').classList.remove('show');
 
-  const steps=[[15,'准备声音样本…'],[40,'序列化请求数据…'],[65,'调用 Fish Audio API…'],[88,'处理返回音频…']];
-  let si=0;
-  const iv=setInterval(()=>{
-    if(si<steps.length){
-      document.getElementById('pFill').style.width=steps[si][0]+'%';
-      document.getElementById('pLabel').textContent=steps[si][1];
-      si++;
-    }
-  },900);
+  // 解析停顿标记
+  const segments = parsePauseSegments(rawText);
+  const textSegs = segments.filter(s => s.type === 'text');
+  const hasPause = segments.some(s => s.type === 'silence');
 
+  let iv = null;
   try {
-    // Fish Audio API 要求 msgpack 序列化才能传 reference audio bytes
-    // 参考: https://docs.fish.audio/developer-guide/core-features/text-to-speech#direct-api-usage
+    // ── 准备参考音频（只做一次）──
+    document.getElementById('pFill').style.width='8%';
+    document.getElementById('pLabel').textContent='准备声音样本…';
     const audioBytes = await ensureWavBytes(voice);
-
-    // 字段与 fish-audio SDK 的 TTSRequest 一致；references[].audio 必须是 Uint8Array + @msgpack/msgpack
-    const payload = {
-      text,
-      references: [{ audio: audioBytes, text: refText }],
-      format: 'wav',
-      latency,
-      normalize: true,
-      prosody: { speed: spd },
-    };
-
     const encodeMsgpack = window.fishMsgpackEncode;
     if (!encodeMsgpack) throw new Error('msgpack 库加载中，请稍候再试');
-    const packed = encodeMsgpack(payload);
 
-    const resp = await fetch(`${getApiBase()}/v1/tts`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${key}`,
-        'Content-Type':  'application/msgpack',
-        'model':         's2-pro',
-      },
-      body: packed,
-    });
+    const totalTextSegs = textSegs.length;
+    const wavBuffers = []; // 按 segments 顺序存，silence 段插入静音 WAV
+    let segsDone = 0;
 
-    clearInterval(iv);
+    // 停止自动进度条，改为手动更新
+    const setProgress = (pct, label) => {
+      document.getElementById('pFill').style.width = pct + '%';
+      document.getElementById('pLabel').textContent = label;
+    };
 
-    if (!resp.ok) {
-      const bodyText = await resp.text();
-      throw new Error(parseApiError(resp, bodyText));
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+
+      if (seg.type === 'silence') {
+        // 直接生成静音 WAV
+        wavBuffers.push(makeSilenceWav(seg.ms));
+        const pct = Math.round(10 + (segsDone / totalTextSegs) * 80);
+        setProgress(pct, `插入 ${seg.ms >= 1000 ? (seg.ms/1000)+'s' : seg.ms+'ms'} 静音…`);
+        continue;
+      }
+
+      // 文字段 → 调用 Fish Audio API
+      segsDone++;
+      const pct = Math.round(10 + ((segsDone - 1) / totalTextSegs) * 80);
+      setProgress(pct,
+        totalTextSegs > 1
+          ? `合成第 ${segsDone}/${totalTextSegs} 段…`
+          : '调用 Fish Audio API…'
+      );
+
+      const payload = {
+        text: seg.content,
+        references: [{ audio: audioBytes, text: refText }],
+        format: 'wav',
+        latency,
+        normalize: true,
+        prosody: { speed: spd },
+      };
+      const packed = encodeMsgpack(payload);
+
+      const resp = await fetch(`${getApiBase()}/v1/tts`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${key}`,
+          'Content-Type':  'application/msgpack',
+          'model':         's2-pro',
+        },
+        body: packed,
+      });
+
+      if (!resp.ok) {
+        const bodyText = await resp.text();
+        throw new Error(parseApiError(resp, bodyText));
+      }
+
+      wavBuffers.push(await resp.arrayBuffer());
     }
 
-    const audioData = await resp.arrayBuffer();
-    document.getElementById('pFill').style.width='100%';
-    document.getElementById('pLabel').textContent='✓ 合成完成！';
+    // ── 拼接所有片段 ──
+    setProgress(96, hasPause ? '正在拼接音频片段…' : '处理返回音频…');
+    const finalBuffer = wavBuffers.length === 1
+      ? wavBuffers[0]
+      : concatWavBuffers(wavBuffers);
 
-    const url = URL.createObjectURL(new Blob([audioData],{type:'audio/wav'}));
+    setProgress(100, '✓ 合成完成！');
+
+    const url = URL.createObjectURL(new Blob([finalBuffer], {type:'audio/wav'}));
     currentAudioURL = url;
     setupPlayer(url, voice.name);
 
@@ -905,11 +1008,11 @@ async function generate() {
       document.getElementById('prog').classList.remove('show');
       document.getElementById('output').classList.add('show');
       document.getElementById('output').scrollIntoView({behavior:'smooth'});
-      toast('✓ 声音生成成功！','ok');
+      toast(hasPause ? `✓ 合成完成（含 ${segments.filter(s=>s.type==='silence').length} 处停顿）` : '✓ 声音生成成功！','ok');
     },400);
 
   } catch(err) {
-    clearInterval(iv);
+    if (iv) clearInterval(iv);
     document.getElementById('prog').classList.remove('show');
     toast('✕ '+err.message,'err');
   } finally {
