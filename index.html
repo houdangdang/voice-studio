@@ -330,11 +330,13 @@ const IDB = {
   async open() {
     if (this.db) return this.db;
     return new Promise((res, rej) => {
-      const req = indexedDB.open('voiceforge', 2);
+      const req = indexedDB.open('voiceforge', 3);
       req.onupgradeneeded = e => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains('voices'))
           db.createObjectStore('voices', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('settings'))
+          db.createObjectStore('settings');
       };
       req.onsuccess = e => { this.db = e.target.result; res(this.db); };
       req.onerror  = e => rej(e);
@@ -366,6 +368,24 @@ const IDB = {
       req.onsuccess = () => res();
       req.onerror   = e => rej(e);
     });
+  },
+  async getSetting(key) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const tx  = db.transaction('settings', 'readonly');
+      const req = tx.objectStore('settings').get(key);
+      req.onsuccess = () => res(req.result || null);
+      req.onerror   = e => rej(e);
+    });
+  },
+  async putSetting(key, value) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const tx  = db.transaction('settings', 'readwrite');
+      const req = tx.objectStore('settings').put(value, key);
+      req.onsuccess = () => res();
+      req.onerror   = e => rej(e);
+    });
   }
 };
 
@@ -374,6 +394,7 @@ const IDB = {
 // ══════════════════════════════════════════════════════
 const API_KEY_LS   = 'voiceforge_apikey';
 const PROXY_URL_LS = 'voiceforge_proxy';
+const DOWNLOAD_HANDLE_IDB = 'lastDownloadHandle';
 // API_BASE resolved at call time from proxy input (falls back to direct)
 function getApiBase() {
   const p = (localStorage.getItem(PROXY_URL_LS)||'').trim().replace(/\/+$/,'');
@@ -1167,6 +1188,35 @@ function downloadPickerType(format) {
     ? { description: 'WAV 音频文件', accept: { 'audio/wav': ['.wav'] } }
     : { description: 'MP3 音频文件', accept: { 'audio/mpeg': ['.mp3'] } };
 }
+async function getLastDownloadHandle() {
+  try { return await IDB.getSetting(DOWNLOAD_HANDLE_IDB); }
+  catch { return null; }
+}
+async function saveLastDownloadHandle(handle) {
+  try { await IDB.putSetting(DOWNLOAD_HANDLE_IDB, handle); }
+  catch { /* File System handles may be unavailable in some browsers */ }
+}
+async function makeSavePickerOptions(fileName, format, useSavedHandle=true) {
+  const opts = {
+    id: 'voiceforge-audio-downloads',
+    suggestedName: fileName,
+    startIn: 'downloads',
+    types: [downloadPickerType(format)],
+  };
+  if (useSavedHandle) {
+    const handle = await getLastDownloadHandle();
+    if (handle) opts.startIn = handle;
+  }
+  return opts;
+}
+async function pickSaveHandle(fileName, format) {
+  try {
+    return await window.showSaveFilePicker(await makeSavePickerOptions(fileName, format, true));
+  } catch (err) {
+    if (err.name === 'AbortError') throw err;
+    return window.showSaveFilePicker(await makeSavePickerOptions(fileName, format, false));
+  }
+}
 async function downloadAudio(){
   if(!currentAudioWavBuffer)return;
   const { format, bitrate } = getDownloadOptions();
@@ -1174,14 +1224,11 @@ async function downloadAudio(){
   const fileName = replaceFileExtension(currentAudioFileName || makeDownloadFileName('', format), format);
   if (window.showSaveFilePicker) {
     try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: fileName,
-        startIn: 'downloads',
-        types: [downloadPickerType(format)],
-      });
+      const handle = await pickSaveHandle(fileName, format);
       const writable = await handle.createWritable();
       await writable.write(blob);
       await writable.close();
+      await saveLastDownloadHandle(handle);
       toast(`✓ ${format.toUpperCase()} 已保存`,'ok');
       return;
     } catch (err) {
