@@ -1050,7 +1050,7 @@ async function generate() {
     const url = URL.createObjectURL(mp3Blob);
     currentAudioURL = url;
     currentAudioBlob = mp3Blob;
-    currentAudioFileName = 'voiceforge_'+Date.now()+'.mp3';
+    currentAudioFileName = makeDownloadFileName(rawText);
     setupPlayer(url, voice.name);
 
     setTimeout(()=>{
@@ -1093,9 +1093,25 @@ function seekAudio(e){
   const r=document.getElementById('progWrap').getBoundingClientRect();
   a.currentTime=((e.clientX-r.left)/r.width)*(a.duration||0);
 }
+function makeDownloadFileName(text) {
+  const title = (text || '').replace(/\s+/g, ' ').trim();
+  if (title && Array.from(title).length <= 30) {
+    const safeTitle = sanitizeFileName(title);
+    if (safeTitle) return safeTitle + '.mp3';
+  }
+  return 'voiceforge_'+Date.now()+'.mp3';
+}
+function sanitizeFileName(name) {
+  return name
+    .replace(/[\\/:*?"<>|]/g, '')
+    .replace(/[\u0000-\u001f]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/^\.+|\.+$/g, '')
+    .trim();
+}
 async function downloadAudio(){
   if(!currentAudioBlob)return;
-  const fileName = currentAudioFileName || 'voiceforge_'+Date.now()+'.mp3';
+  const fileName = currentAudioFileName || makeDownloadFileName('');
   if (window.showSaveFilePicker) {
     try {
       const handle = await window.showSaveFilePicker({
