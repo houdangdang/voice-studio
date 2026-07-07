@@ -11,6 +11,7 @@
 import { encode } from 'https://esm.sh/@msgpack/msgpack@3.1.2';
 window.fishMsgpackEncode = encode;
 </script>
+<script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
 <style>
 :root{
   --ink:#0f0e11;--paper:#f5f2ed;--warm:#ede8df;--rule:#d4cfc6;
@@ -364,6 +365,8 @@ let mediaRec    = null;
 let recChunks   = [];
 let isRecording = false;
 let currentAudioURL = null;
+let currentAudioBlob = null;
+let currentAudioFileName = '';
 let asrAbort = null;
 let liveSpeechRec = null;
 let refAudioURL = null;
@@ -784,6 +787,44 @@ function audioBufferToWav(buf) {
   return new Blob([ab],{type:'audio/wav'});
 }
 
+function audioBufferToMp3(audioBuf, kbps=128) {
+  if (!window.lamejs) throw new Error('MP3 编码库加载中，请稍候再试');
+  const channels = Math.min(2, audioBuf.numberOfChannels || 1);
+  const sampleRate = audioBuf.sampleRate;
+  const encoder = new lamejs.Mp3Encoder(channels, sampleRate, kbps);
+  const blockSize = 1152;
+  const mp3Chunks = [];
+  const samples = [];
+  for (let c = 0; c < channels; c++) samples[c] = floatTo16BitPcm(audioBuf.getChannelData(c));
+  for (let i = 0; i < audioBuf.length; i += blockSize) {
+    const left = samples[0].subarray(i, i + blockSize);
+    const chunk = channels === 2
+      ? encoder.encodeBuffer(left, samples[1].subarray(i, i + blockSize))
+      : encoder.encodeBuffer(left);
+    if (chunk.length) mp3Chunks.push(chunk);
+  }
+  const tail = encoder.flush();
+  if (tail.length) mp3Chunks.push(tail);
+  return new Blob(mp3Chunks, { type: 'audio/mpeg' });
+}
+function floatTo16BitPcm(input) {
+  const out = new Int16Array(input.length);
+  for (let i = 0; i < input.length; i++) {
+    const s = Math.max(-1, Math.min(1, input[i]));
+    out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  return out;
+}
+async function wavBufferToMp3Blob(wavBuffer, kbps=128) {
+  const ctx = new (window.AudioContext||window.webkitAudioContext)();
+  try {
+    const decoded = await ctx.decodeAudioData(wavBuffer.slice(0));
+    return audioBufferToMp3(decoded, kbps);
+  } finally {
+    await ctx.close();
+  }
+}
+
 /** Fish 参考音频建议 WAV；webm/mp3 等先解码再转 WAV。返回独立 Uint8Array 供 msgpack 编码为 bin。 */
 async function ensureWavBytes(voice) {
   const mime = (voice.mime || '').toLowerCase();
@@ -915,6 +956,8 @@ async function generate() {
 
   const btn = document.getElementById('genBtn');
   btn.disabled=true;
+  currentAudioBlob = null;
+  currentAudioFileName = '';
   document.getElementById('genIcon').textContent='⏳';
   document.getElementById('genLabel').textContent='合成中…';
   document.getElementById('prog').classList.add('show');
@@ -993,15 +1036,21 @@ async function generate() {
     }
 
     // ── 拼接所有片段 ──
-    setProgress(96, hasPause ? '正在拼接音频片段…' : '处理返回音频…');
+    setProgress(94, hasPause ? '正在拼接音频片段…' : '处理返回音频…');
     const finalBuffer = wavBuffers.length === 1
       ? wavBuffers[0]
       : concatWavBuffers(wavBuffers);
 
+    setProgress(98, '正在压缩为 MP3 · 均衡模式 128kbps…');
+    const mp3Blob = await wavBufferToMp3Blob(finalBuffer, 128);
+
     setProgress(100, '✓ 合成完成！');
 
-    const url = URL.createObjectURL(new Blob([finalBuffer], {type:'audio/wav'}));
+    if (currentAudioURL) URL.revokeObjectURL(currentAudioURL);
+    const url = URL.createObjectURL(mp3Blob);
     currentAudioURL = url;
+    currentAudioBlob = mp3Blob;
+    currentAudioFileName = 'voiceforge_'+Date.now()+'.mp3';
     setupPlayer(url, voice.name);
 
     setTimeout(()=>{
@@ -1027,7 +1076,7 @@ async function generate() {
 // ══════════════════════════════════════════════════════
 function setupPlayer(url,name) {
   const a=document.getElementById('audioEl'); a.src=url;
-  document.getElementById('playerTitle').textContent=name+' · 合成完成';
+  document.getElementById('playerTitle').textContent=name+' · MP3 128kbps';
   a.ontimeupdate=()=>{
     const p=a.duration?a.currentTime/a.duration*100:0;
     document.getElementById('progFill').style.width=p+'%';
@@ -1044,10 +1093,33 @@ function seekAudio(e){
   const r=document.getElementById('progWrap').getBoundingClientRect();
   a.currentTime=((e.clientX-r.left)/r.width)*(a.duration||0);
 }
-function downloadAudio(){
-  if(!currentAudioURL)return;
-  const a=document.createElement('a'); a.href=currentAudioURL;
-  a.download='voiceforge_'+Date.now()+'.wav'; a.click();
+async function downloadAudio(){
+  if(!currentAudioBlob)return;
+  const fileName = currentAudioFileName || 'voiceforge_'+Date.now()+'.mp3';
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: fileName,
+        startIn: 'downloads',
+        types: [{
+          description: 'MP3 音频文件',
+          accept: { 'audio/mpeg': ['.mp3'] },
+        }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(currentAudioBlob);
+      await writable.close();
+      toast('✓ MP3 已保存','ok');
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      toast('保存目录选择失败，已使用浏览器默认下载','err');
+    }
+  }
+  const a=document.createElement('a');
+  a.href=currentAudioURL;
+  a.download=fileName;
+  a.click();
 }
 function fmt(s){
   if(!s||isNaN(s))return'0:00';
