@@ -87,6 +87,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
 .pw{height:2px;background:var(--rule);border-radius:1px;cursor:pointer;position:relative}
 .pff{height:100%;background:var(--accent);border-radius:1px;width:0%;transition:width .1s}
 .ptime{font-size:10px;color:var(--muted);margin-top:5px}
+.dl-opts{display:flex;align-items:flex-end;gap:8px;flex-shrink:0}
+.dl-field{display:flex;flex-direction:column;gap:4px;min-width:74px}
+.dl-field label{font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.dl-field select{padding:7px 8px;font-size:10px;background:var(--surface)}
 .btn-dl{background:transparent;border:1px solid var(--rule);color:var(--ink);padding:8px 14px;border-radius:6px;cursor:pointer;font-family:'DM Mono',monospace;font-size:10px;transition:all .15s;white-space:nowrap;flex-shrink:0}
 .btn-dl:hover{border-color:var(--ink)}
 .modal-bg{position:fixed;inset:0;background:rgba(15,14,17,.6);backdrop-filter:blur(4px);z-index:100;display:none;align-items:center;justify-content:center}
@@ -240,7 +244,25 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
             <div class="pw" id="progWrap" onclick="seekAudio(event)"><div class="pff" id="progFill"></div></div>
             <div class="ptime" id="playerTime">0:00 / 0:00</div>
           </div>
-          <button class="btn-dl" onclick="downloadAudio()">↓ 下载</button>
+          <div class="dl-opts">
+            <div class="dl-field">
+              <label>格式</label>
+              <select id="downloadFormat" onchange="syncDownloadOptions()">
+                <option value="mp3" selected>MP3</option>
+                <option value="wav">WAV</option>
+              </select>
+            </div>
+            <div class="dl-field" id="bitrateField">
+              <label>码率</label>
+              <select id="downloadBitrate" onchange="syncDownloadOptions()">
+                <option value="96">96k</option>
+                <option value="128" selected>128k</option>
+                <option value="192">192k</option>
+                <option value="320">320k</option>
+              </select>
+            </div>
+            <button class="btn-dl" onclick="downloadAudio()">↓ 下载</button>
+          </div>
         </div>
         <audio id="audioEl" style="display:none"></audio>
       </div>
@@ -366,6 +388,7 @@ let recChunks   = [];
 let isRecording = false;
 let currentAudioURL = null;
 let currentAudioBlob = null;
+let currentAudioWavBuffer = null;
 let currentAudioFileName = '';
 let asrAbort = null;
 let liveSpeechRec = null;
@@ -957,6 +980,7 @@ async function generate() {
   const btn = document.getElementById('genBtn');
   btn.disabled=true;
   currentAudioBlob = null;
+  currentAudioWavBuffer = null;
   currentAudioFileName = '';
   document.getElementById('genIcon').textContent='⏳';
   document.getElementById('genLabel').textContent='合成中…';
@@ -1050,8 +1074,10 @@ async function generate() {
     const url = URL.createObjectURL(mp3Blob);
     currentAudioURL = url;
     currentAudioBlob = mp3Blob;
-    currentAudioFileName = makeDownloadFileName(rawText);
+    currentAudioWavBuffer = finalBuffer.slice(0);
+    currentAudioFileName = makeDownloadFileName(rawText, 'mp3');
     setupPlayer(url, voice.name);
+    syncDownloadOptions();
 
     setTimeout(()=>{
       document.getElementById('prog').classList.remove('show');
@@ -1093,13 +1119,13 @@ function seekAudio(e){
   const r=document.getElementById('progWrap').getBoundingClientRect();
   a.currentTime=((e.clientX-r.left)/r.width)*(a.duration||0);
 }
-function makeDownloadFileName(text) {
+function makeDownloadFileName(text, ext='mp3') {
   const title = (text || '').replace(/\s+/g, ' ').trim();
   if (title && Array.from(title).length <= 30) {
     const safeTitle = sanitizeFileName(title);
-    if (safeTitle) return safeTitle + '.mp3';
+    if (safeTitle) return safeTitle + '.' + ext;
   }
-  return 'voiceforge_'+Date.now()+'.mp3';
+  return 'voiceforge_'+Date.now()+'.'+ext;
 }
 function sanitizeFileName(name) {
   return name
@@ -1109,33 +1135,66 @@ function sanitizeFileName(name) {
     .replace(/^\.+|\.+$/g, '')
     .trim();
 }
+function replaceFileExtension(fileName, ext) {
+  const base = (fileName || makeDownloadFileName('', ext)).replace(/\.[^.]+$/, '');
+  return base + '.' + ext;
+}
+function getDownloadOptions() {
+  const format = document.getElementById('downloadFormat')?.value || 'mp3';
+  const bitrate = parseInt(document.getElementById('downloadBitrate')?.value || '128', 10);
+  return { format, bitrate };
+}
+function syncDownloadOptions() {
+  const { format, bitrate } = getDownloadOptions();
+  const field = document.getElementById('bitrateField');
+  if (field) field.style.display = format === 'mp3' ? 'flex' : 'none';
+  const title = document.getElementById('playerTitle');
+  if (title && currentAudioURL) {
+    const base = title.textContent.split(' · ')[0] || '合成音频';
+    title.textContent = format === 'mp3' ? base+' · MP3 '+bitrate+'kbps' : base+' · WAV';
+  }
+}
+async function buildDownloadBlob(format, bitrate) {
+  if (format === 'wav') return new Blob([currentAudioWavBuffer], { type: 'audio/wav' });
+  if (bitrate === 128 && currentAudioBlob) return currentAudioBlob;
+  return wavBufferToMp3Blob(currentAudioWavBuffer.slice(0), bitrate);
+}
+function downloadMimeType(format) {
+  return format === 'wav' ? 'audio/wav' : 'audio/mpeg';
+}
+function downloadPickerType(format) {
+  return format === 'wav'
+    ? { description: 'WAV 音频文件', accept: { 'audio/wav': ['.wav'] } }
+    : { description: 'MP3 音频文件', accept: { 'audio/mpeg': ['.mp3'] } };
+}
 async function downloadAudio(){
-  if(!currentAudioBlob)return;
-  const fileName = currentAudioFileName || makeDownloadFileName('');
+  if(!currentAudioWavBuffer)return;
+  const { format, bitrate } = getDownloadOptions();
+  const blob = await buildDownloadBlob(format, bitrate);
+  const fileName = replaceFileExtension(currentAudioFileName || makeDownloadFileName('', format), format);
   if (window.showSaveFilePicker) {
     try {
       const handle = await window.showSaveFilePicker({
         suggestedName: fileName,
         startIn: 'downloads',
-        types: [{
-          description: 'MP3 音频文件',
-          accept: { 'audio/mpeg': ['.mp3'] },
-        }],
+        types: [downloadPickerType(format)],
       });
       const writable = await handle.createWritable();
-      await writable.write(currentAudioBlob);
+      await writable.write(blob);
       await writable.close();
-      toast('✓ MP3 已保存','ok');
+      toast(`✓ ${format.toUpperCase()} 已保存`,'ok');
       return;
     } catch (err) {
       if (err.name === 'AbortError') return;
       toast('保存目录选择失败，已使用浏览器默认下载','err');
     }
   }
+  const url = URL.createObjectURL(new Blob([blob], { type: downloadMimeType(format) }));
   const a=document.createElement('a');
-  a.href=currentAudioURL;
+  a.href=url;
   a.download=fileName;
   a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 function fmt(s){
   if(!s||isNaN(s))return'0:00';
