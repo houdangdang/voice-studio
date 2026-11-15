@@ -231,6 +231,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
           <select id="latencySel">
             <option value="normal">标准（推荐）</option>
             <option value="balanced">均衡</option>
+            <option value="low">低延迟</option>
           </select>
         </div>
       </div>
@@ -910,6 +911,7 @@ function parseApiError(resp, bodyText) {
   }
   if (resp.status === 402) return '余额不足，请前往 fish.audio 充值';
   if (resp.status === 401) return 'API Key 无效，请检查';
+  if (resp.status === 504) return 'Fish Audio 合成超时：请改用“均衡”或“低延迟”模式，并缩短单次文本';
   if (resp.status === 400) {
     return `${msg}。请确认：① 参考文稿与音频内容一致；② 样本约 15–30 秒清晰人声；③ 旧样本需删除后重新添加并填写文稿`;
   }
@@ -1006,7 +1008,10 @@ async function generate() {
   const model   = document.getElementById('modelSel').value;
   const lang    = document.getElementById('langSel').value;
   const spd     = parseFloat(document.getElementById('speedRange').value);
-  const latency = document.getElementById('latencySel').value;
+  const selectedLatency = document.getElementById('latencySel').value;
+  const latency = model === 's2.1-pro-free' && selectedLatency === 'normal'
+    ? 'balanced'
+    : selectedLatency;
   const voice   = voices.find(v=>v.id===activeVoice);
   if (!voice) return;
   const refText = (voice.refText || '').trim();
@@ -1104,7 +1109,7 @@ async function generate() {
       ? wavBuffers[0]
       : concatWavBuffers(wavBuffers);
 
-    setProgress(98, '正在压缩为 MP3 · 均衡模式 128kbps…');
+    setProgress(98, '正在压缩为 MP3 · 128kbps…');
     const mp3Blob = await wavBufferToMp3Blob(finalBuffer, 128);
 
     setProgress(100, '✓ 合成完成！');
