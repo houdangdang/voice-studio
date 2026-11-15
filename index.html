@@ -210,6 +210,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
         <div class="og"><label>模型</label>
           <select id="modelSel" onchange="onModelChange()">
             <option value="s2-pro">S2 Pro · 克隆</option>
+            <option value="s2.1-pro">S2.1 Pro · 克隆</option>
             <option value="s2.1-pro-free">S2.1 Pro Free · 克隆</option>
             <option value="drama-3">Drama 3 · 表演</option>
           </select>
@@ -432,7 +433,7 @@ async function init() {
   const k = localStorage.getItem(API_KEY_LS) || '';
   document.getElementById('apiKey').value = k;
   const model = localStorage.getItem(MODEL_LS) || 's2-pro';
-  document.getElementById('modelSel').value = ['s2-pro', 's2.1-pro-free', 'drama-3'].includes(model) ? model : 's2-pro';
+  document.getElementById('modelSel').value = ['s2-pro', 's2.1-pro', 's2.1-pro-free', 'drama-3'].includes(model) ? model : 's2-pro';
   if (k) validateKeyUI(k);
 
   const p = localStorage.getItem(PROXY_URL_LS) || '';
